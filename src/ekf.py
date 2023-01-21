@@ -1,21 +1,22 @@
 ######################################################################## 
-# Implementing a Kalman filter - SQ
+# Implementing a Extended Kalman filter - SQ
 #########################################################################
 import numpy as np
 import torch
-from torch import nn, linalg
+from torch import autograd, nn
 
-class KF(nn.Module):
-    """ This class implements a Kalman Filter in PyTorch
+class EKF(nn.Module):
+    """ This class implements an extended Kalman filter in PyTorch
     """
-    def __init__(self, n_states, F, G, H, Q, R) -> None:
-        super(KF, self).__init__()
+    def __init__(self, n_states, f, h, Q, R):
+        super(EKF, self).__init__()
+
+        self.n_states = n_states
         
         # Initializing the system model
         self.n_states = n_states # Setting the number of states of the Kalman filter
-        self.F_k = F # State transition matrix (relates x_k to x_{k+1})
-        self.G_k = G # Input matrix (relates input u_k to x_k)
-        self.H_k = H # Output matrix (relates state x_k to output y_k)
+        self.f_k = f # State transition function (relates x_k, u_k to x_{k+1})
+        self.h_k = h # Output function (relates state x_k to output y_k)
         self.Q_k = Q # Covariance matrix of the process noise, we assume process noise w_k ~ N(0, Q)
         self.R_k = R # Covariance matrix of the measurement noise, we assume mesaurement noise v_k ~ N(0, R)
         
@@ -30,7 +31,7 @@ class KF(nn.Module):
 
         return None
     
-    def predict_estimate(self, F_k_prev, Pk_pos_prev, G_k_prev, Q_k_prev):
+    def predict_estimate(self, F_k_prev, Pk_pos_prev, G_k_prev, Q_k_prev, u_k=0.0):
         """ This function helps implement the prediction step / time-update step of the Kalman filter, i.e. using 
         available observations, and previous state estimates, what is the next state estimate?
 
@@ -47,6 +48,7 @@ class KF(nn.Module):
         
         # Implemeting a Square-Root Filtering version for numerical stability
         # Trying QR decomposition to get Pk_neg from Pk_pos
+        F_k_prev = self.compute_jac_f_k(x_=self.x_hat_pos_k, inputs_=u_k)
         self.Sk_pos_sqrt = torch.linalg.cholesky(Pk_pos_prev)
         Qk_prev_sqrt = torch.linalg.cholesky(Q_k_prev)
         A_state = torch.cat((F_k_prev @ self.Sk_pos_sqrt, G_k_prev @ Qk_prev_sqrt), dim=1)
@@ -56,7 +58,7 @@ class KF(nn.Module):
         self.Sk_neg_sqrt = Ra.T[:,:self.n_states]
 
         # Time update equation
-        self.x_hat_neg_k = F_k_prev @ self.x_hat_pos_k # Calculating the predicted state estimate using the previous filtered state estimate \hat{x}_{k-1 \vert k-1}^{+}
+        self.x_hat_neg_k = self.f_k(self.x_hat_pos_k, u_k) # Calculating the predicted state estimate using the previous filtered state estimate \hat{x}_{k-1 \vert k-1}^{+}
         self.Pk_neg = self.Sk_neg_sqrt @ self.Sk_neg_sqrt.T # Calculating the predicted state estimate covariance 
 
         return self.x_hat_neg_k, self.Pk_neg
@@ -69,6 +71,7 @@ class KF(nn.Module):
             _type_: _description_
         """
         
+        self.H_k = self.compute_jac_h_k(x_=self.x_hat_neg_k)
         assert self.H_k.shape[1] == self.n_states, "Dimension of H_k is not consistent"
 
         # Trying to Square root algorithm since K_k is ill conditioned at the moment.
@@ -87,25 +90,18 @@ class KF(nn.Module):
         self.Sk_pos_sqrt = Ra_measurement.T[self.H_k.shape[0]:,self.H_k.shape[0]:]
         
         # Measurement update equation
-        self.x_hat_pos_k = self.x_hat_neg_k + self.K_k @ (y_k - self.H_k @ self.x_hat_neg_k)
+        self.x_hat_pos_k = self.x_hat_neg_k + self.K_k @ (y_k - self.h_k(self.x_hat_neg_k))
         self.Pk_pos = self.Sk_pos_sqrt @ self.Sk_pos_sqrt.T
         assert self.Pk_pos.shape[0] == self.n_states and self.Pk_pos.shape[1] == self.n_states, "Dimension problem for P_k"
 
         return self.x_hat_pos_k, self.Pk_pos
 
-    def compute_K(self):
-        """_summary_
+    def compute_jac_f_k(self, x_, inputs_):
+        x_ = x_.reshape((-1,))
+        F_k = autograd.functional.jacobian(self.f_k, (x_, inputs_))
+        return F_k
 
-        Returns:
-            _type_: _description_
-        """
-        Re_k = self.H_k @ (self.Pk_neg @ self.H_k.T) + self.R_k
-        if len(torch.flatten(Re_k)) > 1:
-            K_k = self.Pk_neg @ (self.H_k.T @ torch.linalg.inv(Re_k))
-        elif len(torch.flatten(Re_k)) == 1:
-            K_k = self.Pk_neg @ (self.H_k.T @ (1.0 / Re_k))
-        return K_k
-
-def train_kf(kf_model, T):
-
-    pass
+    def compute_jac_h_k(self, x_):
+        x_ = x_.reshape((-1,))
+        H_k = autograd.functional.jacobian(self.h_k, (x_))
+        return H_k
