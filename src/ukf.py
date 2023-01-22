@@ -102,3 +102,37 @@ class UKF(nn.Module):
         self.x_hat_pos_k = self.x_hat_neg_k + self.K_k @ (y_k - y_hat_k)
         self.Pk_pos = self.Pk_neg - self.K_k @ Py @ self.K_k.T
         return self.x_hat_pos_k, self.Pk_pos
+    
+    def run_mb_filter(self, X_ref, Y, U=None):
+
+        if len(Y.shape) == 3:
+            N, T, d = Y.shape
+        elif len(Y.shape) == 2:
+            T, d = Y.shape
+            N = 1
+            Y = Y.reshape((N, T, d))
+
+        traj_estimated = torch.zeros((N, T, self.n_states))
+        Pk_estimated = torch.zeros((N, T, self.n_states, self.n_states))
+        mse_arr = torch.zeros((N,1))
+
+        for i in range(0, N):
+
+            for k in range(0, T):
+
+                x_rec_hat_neg_k, Pk_neg = self.predict_estimate(Q_k_prev=self.Q_k, u_k=U[i,k])
+                
+                x_rec_hat_pos_k, Pk_pos = self.filtered_estimate(y_k=Y[i])
+            
+                # Save filtered state estimates
+                traj_estimated[i,k,:] = x_rec_hat_pos_k
+                #Also save covariances
+                Pk_estimated[i,k,:,:] = Pk_pos
+
+                print("i: {}, k: {}, norm of kalman gain: {}".format(k, np.linalg.norm(self.K_k)))
+
+            mse_arr[i] = torch.linalg.norm(traj_estimated[i] - X_ref[i])  # Calculate the squared error across the length of a single sequence
+
+        mse = torch.mean(mse_arr, dim=0) # Calculate the MSE by averaging over all examples in a batch
+        
+        return traj_estimated, Pk_estimated, mse

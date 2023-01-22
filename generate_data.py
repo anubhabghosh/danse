@@ -116,13 +116,15 @@ class LinearSSM(object):
 
 class LorenzAttractorModel(object):
 
-    def __init__(self, d, J, delta, A_fn, h_fn) -> None:
+    def __init__(self, d, J, delta, delta_d, A_fn, h_fn, decimate=False) -> None:
         
         self.d = d
         self.J = J
         self.delta = delta
+        self.delta_d = delta_d
         self.A_fn = A_fn
         self.h_fn = h_fn
+        self.decimate = decimate
 
     def h_fn(self, x):
         return x
@@ -135,7 +137,7 @@ class LorenzAttractorModel(object):
 
         return self.F @ x
 
-    def simulate_Lorenz_attractor(self, T, inverse_r2_dB, nu_dB, delta_d=None, decimate=False):
+    def generate_single_sequence(self, T, inverse_r2_dB, nu_dB):
     
         x = np.zeros((T+1, self.d))
         y = np.zeros((T, self.d))
@@ -153,8 +155,8 @@ class LorenzAttractorModel(object):
             x[t+1] = self.f_linearize(x[t]) + e[t]
             y[t] = self.h_fn(x[t]) + v[t]
         
-        if decimate == True:
-            K = int(delta_d / self.delta)
+        if self.decimate == True:
+            K = int(self.delta_d / self.delta)
             x_lorenz_d = x[0:T:K,:]
             y_lorenz_d = self.h_fn(x_lorenz_d) + np.random.multivariate_normal(
                 np.zeros(self.d,), r2*np.eye(self.d),size=(len(x_lorenz_d),))
@@ -163,3 +165,59 @@ class LorenzAttractorModel(object):
             y_lorenz_d = None
 
         return x, y, x_lorenz_d, y_lorenz_d
+
+def generate_SSM_data(type, N, T, parameters):
+
+    if type == "linear":
+
+        model = LinearSSM(n_states=parameters["n_states"],
+                        n_obs=parameters["n_obs"],
+                        F=parameters["F"],
+                        G=parameters["G"],
+                        H=parameters["H"],
+                        mu_e=parameters["mu_e"],
+                        mu_w=parameters["mu_w"],
+                        q=parameters["q"],
+                        r=parameters["r"])
+
+        X_arr = torch.zeros((N, T, model.n_states))
+        Y_arr = torch.zeros((N, T, model.n_obs))
+
+        for i in range(N):   
+
+            Xi, Yi = model.generate_single_sequence(
+                N=T,
+                drive_noise=False,
+                add_noise_flag=False
+            )
+
+            X_arr[i] = Xi
+            Y_arr[i] = Yi
+    
+    elif type == "Lorenz":
+
+        model = LorenzAttractorModel(
+            d=parameters["n_states"],
+            J=parameters["J"],
+            delta=parameters["delta"],
+            A_fn=parameters["A_fn"],
+            h_fn=parameters["h_fn"],
+            delta_d=parameters["delta_d"],
+            decimate=parameters["decimate"]
+                    )
+
+        X_arr = torch.zeros((N, T, model.n_states))
+        Y_arr = torch.zeros((N, T, model.n_obs))
+
+        for i in range(N):   
+
+            Xi, Yi = model.generate_single_sequence(
+                T=T,
+                inverse_r2_dB=parameters["inverse_r2_dB"],
+                nu_dB=parameters["nu_dB"]
+            )
+
+            X_arr[i] = Xi
+            Y_arr[i] = Yi
+
+    return model, X_arr, Y_arr

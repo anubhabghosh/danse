@@ -31,7 +31,7 @@ class EKF(nn.Module):
 
         return None
     
-    def predict_estimate(self, F_k_prev, Pk_pos_prev, G_k_prev, Q_k_prev, u_k=0.0):
+    def predict_estimate(self, Pk_pos_prev, G_k_prev, Q_k_prev, u_k=0.0):
         """ This function helps implement the prediction step / time-update step of the Kalman filter, i.e. using 
         available observations, and previous state estimates, what is the next state estimate?
 
@@ -63,7 +63,7 @@ class EKF(nn.Module):
 
         return self.x_hat_neg_k, self.Pk_neg
 
-    def filtered_estimate(self, p_ref_k_all, y_k):
+    def filtered_estimate(self, y_k):
         """ This function implements the filtering step of the Kalman filter
         Args:
             y_k: The measurement at time instant k 
@@ -105,3 +105,38 @@ class EKF(nn.Module):
         x_ = x_.reshape((-1,))
         H_k = autograd.functional.jacobian(self.h_k, (x_))
         return H_k
+
+    def run_mb_filter(self, X, Y):
+
+        if len(Y.shape) == 3:
+            N, T, d = Y.shape
+        elif len(Y.shape) == 2:
+            T, d = Y.shape
+            N = 1
+            Y = Y.reshape((N, T, d))
+
+        traj_estimated = torch.zeros((N, T, self.n_states))
+        Pk_estimated = torch.zeros((N, T, self.n_states, self.n_states))
+        mse_arr = torch.zeros((N,1))
+
+        for i in range(0, N):
+
+            for k in range(0, T):
+
+                x_rec_hat_neg_k, Pk_neg = self.predict_estimate(Pk_pos_prev=self.Pk_pos,
+                                        G_k_prev=self.G_k, Q_k_prev=self.Q_k)
+                
+                x_rec_hat_pos_k, Pk_pos = self.filtered_estimate(y_k=Y[i])
+            
+                # Save filtered state estimates
+                traj_estimated[i,k,:] = x_rec_hat_pos_k
+                #Also save covariances
+                Pk_estimated[i,k,:,:] = Pk_pos
+
+                print("i: {}, k: {}, norm of kalman gain: {}".format(k, np.linalg.norm(self.K_k)))
+
+            mse_arr[i] = torch.linalg.norm(traj_estimated[i] - X[i])  # Calculate the squared error across the length of a single sequence
+
+        mse = torch.mean(mse_arr, dim=0) # Calculate the MSE by averaging over all examples in a batch
+        
+        return traj_estimated, Pk_estimated, mse
