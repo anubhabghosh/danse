@@ -5,7 +5,19 @@ from torch.distributions import MultivariateNormal
 from torch.utils.data import Dataset, DataLoader
 from collections import deque
 
+def dB_to_lin(x):
+    return 10**(x/10)
 
+def lin_to_dB(x):
+    assert x != 0, "X is zero"
+    return 10*np.log10(x)
+
+def generate_normal(N, mean, Sigma):
+
+    # n = N(mean, std**2)
+    n = np.random.multivariate_normal(mean=mean, cov=Sigma, size=(N,))
+    return n
+    
 def count_params(model):
     """
     Counts two types of parameters:

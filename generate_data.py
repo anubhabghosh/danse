@@ -5,19 +5,7 @@ import torch
 from torch import distributions
 import matplotlib.pyplot as plt
 from scipy.linalg import expm
-
-def dB_to_lin(x):
-    return 10**(x/10)
-
-def lin_to_dB(x):
-    assert x != 0, "X is zero"
-    return 10*np.log10(x)
-
-def generate_normal(N, mean, Sigma):
-
-    # n = N(mean, std**2)
-    n = np.random.multivariate_normal(mean=mean, cov=Sigma, size=(N,))
-    return n
+from utils.utils import dB_to_lin, generate_normal
 
 class LinearSSM(object):
 
