@@ -4,18 +4,27 @@
 import numpy as np
 import torch
 from torch import nn, linalg
+from ..utils.utils import dB_to_lin
 
 class KF(nn.Module):
     """ This class implements a Kalman Filter in PyTorch
     """
-    def __init__(self, n_states, F, G, H, Q, R) -> None:
+    def __init__(self, n_states, n_obs, F=None, G=None, H=None, Q=None, R=None, inverse_r2_dB=None, nu_dB=None) -> None:
         super(KF, self).__init__()
         
         # Initializing the system model
         self.n_states = n_states # Setting the number of states of the Kalman filter
+        self.n_obs = n_obs
         self.F_k = F # State transition matrix (relates x_k to x_{k+1})
         self.G_k = G # Input matrix (relates input u_k to x_k)
         self.H_k = H # Output matrix (relates state x_k to output y_k)
+
+        if (not inverse_r2_dB is None) and (not nu_dB is None):
+            r2 = 1.0 / dB_to_lin(inverse_r2_dB)
+            q2 = dB_to_lin(nu_dB - inverse_r2_dB)
+            Q = q2 * torch.eye(self.n_states)
+            R = r2 * torch.eye(self.n_obs)
+
         self.Q_k = Q # Covariance matrix of the process noise, we assume process noise w_k ~ N(0, Q)
         self.R_k = R # Covariance matrix of the measurement noise, we assume mesaurement noise v_k ~ N(0, R)
         

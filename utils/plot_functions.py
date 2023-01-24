@@ -20,7 +20,7 @@ def plot_state_trajectory(X, X_est=None, savefig=False, savefig_name=None):
         ax.set_ylabel('$X_3$')
         plt.legend()
         
-    elif X.shape[-1] == 3:
+    elif X.shape[-1] > 2:
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
         ax.plot(X[:,0], X[:,1], X[:,2], '--',label='$\\mathbf{x}^{true}$')
@@ -73,7 +73,7 @@ def plot_state_trajectory_axes(X, X_est=None, savefig=False, savefig_name=None):
         plt.xlabel('$n$')
         plt.legend()
         
-    elif X.shape[-1] == 3:
+    elif X.shape[-1] > 2:
         
         fig = plt.figure(figsize=(20,10))
         plt.subplot(311)

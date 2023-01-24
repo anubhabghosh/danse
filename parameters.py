@@ -2,7 +2,7 @@
 import numpy as np
 import torch
 
-torch.random.seed(10)
+torch.manual_seed(10)
 
 def get_parameters(N=1000, T=100, batch_size=128, n_states=5, n_obs=5, q=1.0, r=1.0, 
     inverse_r2_dB=0, nu_dB=0):
@@ -15,15 +15,19 @@ def get_parameters(N=1000, T=100, batch_size=128, n_states=5, n_obs=5, q=1.0, r=
             "n_states":n_states,
             "n_obs":n_obs,
             "F":None,
-            "G":torch.zeros(n_states),
+            "G":np.zeros((n_states,1)),
             "H":None,
-            "mu_e":torch.zeros(n_states,1),
-            "mu_w":torch.zeros(n_obs,1),
+            "mu_e":np.zeros((n_states,1)),
+            "mu_w":np.zeros((n_obs,1)),
+            "inverse_r2_dB":inverse_r2_dB,
+            "nu_dB":nu_dB,
             "q":q,
             "r":r,
             "N":N,
             "T":T,
-            "batch_size":batch_size
+            "batch_size":batch_size,
+            "Q":None,
+            "R":None
 
         },
         # Parameters of the Lorenz Attractor model
@@ -31,14 +35,14 @@ def get_parameters(N=1000, T=100, batch_size=128, n_states=5, n_obs=5, q=1.0, r=
             "n_states":n_states,
             "n_obs":n_obs,
             "J":None,
-            "delta":torch.zeros(n_states),
+            "delta":np.zeros(n_states),
             "A_fn":lambda z: np.array([
                     [-10, 10, 0],
                     [28, -1, -z[0]],
                     [0, z[0], -8.0/3]
                 ]),
             "h_fn":lambda x: x,
-            "delta_d":torch.zeros(n_obs,1),
+            "delta_d":np.zeros((n_obs,1)),
             "decimate":q,
             "inverse_r2_dB":inverse_r2_dB,
             "nu_dB":nu_dB
