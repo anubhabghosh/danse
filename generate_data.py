@@ -15,7 +15,7 @@ class LinearSSM(object):
         self.n_states = n_states
         self.n_obs = n_obs
 
-        if self.F is None and self.H is None:
+        if F is None and H is None:
             self.F = self.construct_F()
             self.H = self.construct_H()
         else:
@@ -38,19 +38,19 @@ class LinearSSM(object):
     def construct_F(self):
         m = self.n_states
         F_sys = np.eye(m) + np.concatenate((np.zeros((m,1)), 
-                                    np.concatenate((np.ones((1,m-1)), 
-                                                    np.zeros((m-1,m-1))), 
-                                                axis=0)), 
-                                axis=1)
+                                np.concatenate((np.ones((1,m-1)), 
+                                                np.zeros((m-1,m-1))), 
+                                               axis=0)), 
+                               axis=1)
         return F_sys
 
     def construct_H(self):
         m = self.n_obs
         H_sys = np.rot90(np.eye(m)) + np.concatenate((np.concatenate((np.ones((1, m-1)), 
-                                                                np.zeros((m-1, m-1))), 
-                                                                axis=0), 
-                                                np.zeros((m,1))), 
-                                                axis=1)
+                                                              np.zeros((m-1, m-1))), 
+                                                             axis=0), 
+                                              np.zeros((m,1))), 
+                                             axis=1)
         return H_sys
 
     def init_noise_covs(self):
@@ -69,19 +69,27 @@ class LinearSSM(object):
         return u_k
 
 
-    def generate_single_sequence(self, N, drive_noise=False, add_noise_flag=False):
+    def generate_single_sequence(self, T, inverse_r2_dB=0, nu_dB=0, drive_noise=False, add_noise_flag=False):
     
-        x_arr = np.zeros((N+1, self.n_states))
-        y_arr = np.zeros((N, self.n_obs))
+        x_arr = np.zeros((T+1, self.n_states))
+        y_arr = np.zeros((T, self.n_obs))
+        
+        r2 = 1.0 / dB_to_lin(inverse_r2_dB)
+        q2 = dB_to_lin(nu_dB - inverse_r2_dB)
+        
+        self.r = r2
+        self.q = q2
+        
+        self.init_noise_covs()
         
         #NOTE: Since theta_5 and theta_6 are modeling variances in this code, 
         # for direct comparison with the MATLAB code, the std param input should be
         # a square root version
-        e_k_arr = generate_normal(N=N, mean=np.zeros((self.n_states,)), Sigma=self.Q)
-        w_k_arr = generate_normal(N=N, mean=np.zeros((self.n_obs,)), Sigma=self.R)
+        e_k_arr = generate_normal(N=T, mean=np.zeros((self.n_states,)), Sigma=self.Q)
+        w_k_arr = generate_normal(N=T, mean=np.zeros((self.n_obs,)), Sigma=self.R)
         
         # Generate the sequence iteratively
-        for k in range(N):
+        for k in range(T):
             
             # Generate driving noise (which is time varying)
             # Driving noise should be carefully selected as per value of k (start from k=0 or =1)
@@ -146,17 +154,16 @@ class LorenzAttractorModel(object):
         if self.decimate == True:
             K = int(self.delta_d / self.delta)
             x_lorenz_d = x[0:T:K,:]
-            y_lorenz_d = self.h_fn(x_lorenz_d) + np.random.multivariate_normal(
-                np.zeros(self.d,), r2*np.eye(self.d),size=(len(x_lorenz_d),))
+            y_lorenz_d = self.h_fn(x_lorenz_d) + np.random.multivariate_normal(np.zeros(self.d,), r2*np.eye(self.d),size=(len(x_lorenz_d),))
         else:
             x_lorenz_d = None
             y_lorenz_d = None
 
         return x, y, x_lorenz_d, y_lorenz_d
 
-def generate_SSM_data(type, N, T, parameters):
+def generate_SSM_data(type_, T, parameters):
 
-    if type == "linear":
+    if type_ == "LinearSSM":
 
         model = LinearSSM(n_states=parameters["n_states"],
                         n_obs=parameters["n_obs"],
@@ -166,26 +173,25 @@ def generate_SSM_data(type, N, T, parameters):
                         mu_e=parameters["mu_e"],
                         mu_w=parameters["mu_w"],
                         q=parameters["q"],
-                        r=parameters["r"])
+                        r=parameters["r"],
+                        Q=parameters["Q"],
+                        R=parameters["R"])
 
-        X_arr = torch.zeros((N, T, model.n_states))
-        Y_arr = torch.zeros((N, T, model.n_obs))
+        X_arr = np.zeros((T, model.n_states))
+        Y_arr = np.zeros((T, model.n_obs))
 
-        for i in range(N):   
-
-            Xi, Yi = model.generate_single_sequence(
-                N=T,
+        X_arr, Y_arr = model.generate_single_sequence(
+                T=T,
+                inverse_r2_dB=parameters["inverse_r2_dB"],
+                nu_dB=parameters["nu_dB"],
                 drive_noise=False,
                 add_noise_flag=False
             )
 
-            X_arr[i] = Xi
-            Y_arr[i] = Yi
-    
-    elif type == "Lorenz":
+    elif type_ == "LorenzSSM":
 
         model = LorenzAttractorModel(
-            d=parameters["n_states"],
+            d=3,
             J=parameters["J"],
             delta=parameters["delta"],
             A_fn=parameters["A_fn"],
@@ -193,19 +199,44 @@ def generate_SSM_data(type, N, T, parameters):
             delta_d=parameters["delta_d"],
             decimate=parameters["decimate"]
                     )
+        
+        X_arr = np.zeros((T, model.n_states))
+        Y_arr = np.zeros((T, model.n_obs))
 
-        X_arr = torch.zeros((N, T, model.n_states))
-        Y_arr = torch.zeros((N, T, model.n_obs))
-
-        for i in range(N):   
-
-            Xi, Yi = model.generate_single_sequence(
+        X_arr, Y_arr = model.generate_single_sequence(
                 T=T,
                 inverse_r2_dB=parameters["inverse_r2_dB"],
-                nu_dB=parameters["nu_dB"]
+                nu_dB=parameters["nu_dB"],
+                drive_noise=False,
+                add_noise_flag=False
             )
-
-            X_arr[i] = Xi
-            Y_arr[i] = Yi
-
+        
     return model, X_arr, Y_arr
+
+
+def generate_state_observation_pairs(type_, parameters, T=200, N_samples=1000):
+
+    # Define the parameters of the model
+    #N = 1000
+
+    # Plot the trajectory versus sample points
+    #num_trajs = 5
+
+    Z_XY = {}
+    Z_XY["num_samples"] = N_samples
+    Z_XY_data_lengths = []
+
+    count = 0
+    Z_XY_data = []
+
+    for i in range(N_samples):
+        
+        model, Xi, Yi = generate_SSM_data(type_, T, parameters)
+        Z_XY_data_lengths.append(T)
+        Z_XY_data.append([Xi, Yi])
+        
+    Z_XY["data"] = np.row_stack(Z_XY_data).astype(object)
+    #Z_pM["data"] = Z_pM_data
+    Z_XY["trajectory_lengths"] = np.vstack(Z_XY_data_lengths)
+
+    return Z_XY

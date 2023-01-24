@@ -67,12 +67,10 @@ def create_diag(x):
 
 class Series_Dataset(Dataset):
 
-    def __init__(self, Z_pM_dict):
+    def __init__(self, Z_XY_dict):
 
-        self.data_dict = Z_pM_dict
-        self.num_realizations = Z_pM_dict["num_realizations"]
-        self.num_trajectories = Z_pM_dict["num_trajectories"]
-        self.trajectory_lengths = Z_pM_dict["trajectory_lengths"]
+        self.data_dict = Z_XY_dict
+        self.trajectory_lengths = Z_XY_dict["trajectory_lengths"]
 
     def __len__(self):
 
@@ -83,14 +81,12 @@ class Series_Dataset(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
-        inputs = self.data_dict["data"][idx][1]
-
-        sample = {"inputs": np.expand_dims(inputs, axis=0), 
-                  "targets": self.data_dict["data"][idx][0]
+        sample = {"inputs": np.expand_dims(self.data_dict["data"][idx][1], axis=0), 
+                  "targets": np.expand_dims(self.data_dict["data"][idx][0], axis=0)
                   }
 
         return sample
-
+    
 def obtain_tr_val_test_idx(dataset, tr_to_test_split=0.9, tr_to_val_split=0.83):
 
     num_training_plus_test_samples = len(dataset)
@@ -113,7 +109,7 @@ def obtain_tr_val_test_idx(dataset, tr_to_test_split=0.9, tr_to_val_split=0.83):
 def my_collate_fn(batch):
     inputs = [item["inputs"] for item in batch]
     targets = [item["targets"] for item in batch]
-    targets = torch.FloatTensor(targets)
+    targets = torch.from_numpy(np.row_stack(targets))
     inputs = torch.from_numpy(np.row_stack(inputs))
     return (inputs, targets)
 
