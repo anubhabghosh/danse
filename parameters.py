@@ -5,7 +5,7 @@ import torch
 torch.manual_seed(10)
 
 def get_parameters(N=1000, T=100, batch_size=128, n_states=5, n_obs=5, q=1.0, r=1.0, 
-    inverse_r2_dB=0, nu_dB=0):
+    inverse_r2_dB=40, nu_dB=0):
 
     H_DANSE = torch.randn(n_obs, n_states)
 
@@ -51,7 +51,7 @@ def get_parameters(N=1000, T=100, batch_size=128, n_states=5, n_obs=5, q=1.0, r=
 
     estimators_dict={
         # Parameters of the DANSE estimator
-        "DANSE":{
+        "danse":{
             "n_states":n_states,
             "n_obs":n_obs,
             "mu_w":torch.zeros(n_obs,1),
@@ -59,8 +59,18 @@ def get_parameters(N=1000, T=100, batch_size=128, n_states=5, n_obs=5, q=1.0, r=
             "H":H_DANSE,
             "mu_x0":torch.zeros(n_states,1),
             "C_x0":torch.zeros(n_states,n_states),
+            "rnn_type":"gru",
             "rnn_params_dict":{
                 "gru":{
+                    "model_type":"gru",
+                    "input_size":n_obs,
+                    "output_size":2*n_states,
+                    "n_hidden":40,
+                    "n_layers":2,
+                    "lr":5e-4,
+                    "num_epochs":3000
+                },
+                "rnn":{
                     "model_type":"gru",
                     "input_size":n_obs,
                     "output_size":2*n_states,

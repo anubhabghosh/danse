@@ -129,9 +129,7 @@ class KF(nn.Module):
         mse_arr = torch.zeros((N,1))
 
         for i in range(0, N):
-
             for k in range(0, T):
-
                 x_rec_hat_neg_k, Pk_neg = self.predict_estimate(F_k_prev=self.F_k, Pk_pos_prev=self.Pk_pos,
                                         G_k_prev=self.G_k, Q_k_prev=self.Q_k)
                 

@@ -4,6 +4,8 @@ import os
 from torch.distributions import MultivariateNormal
 from torch.utils.data import Dataset, DataLoader
 from collections import deque
+import pickle as pkl
+import json
 
 def dB_to_lin(x):
     return 10**(x/10)
@@ -196,6 +198,29 @@ def get_list_of_config_files(model_type, options, dataset_mode='pfixed', params_
     #print(list_of_config_files)
     
     return list_of_config_files
+
+class NDArrayEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
+
+def load_splits_file(splits_filename):
+
+    with open(splits_filename, 'rb') as handle:
+        splits = pkl.load(handle)
+    return splits
+
+def load_saved_dataset(filename):
+
+    with open(filename, 'rb') as handle:
+        Z_pM = pkl.load(handle)
+    return Z_pM
+
+def save_dataset(Z_pM, filename):
+    # Saving the dataset
+    with open(filename, 'wb') as handle:
+        pkl.dump(Z_pM, handle, protocol=pkl.HIGHEST_PROTOCOL)
 
 def check_if_dir_or_file_exists(file_path, file_name=None):
     flag_dir = os.path.exists(file_path)
