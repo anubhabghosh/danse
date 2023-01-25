@@ -34,18 +34,19 @@ def get_parameters(N=1000, T=100, batch_size=128, n_states=5, n_obs=5, q=1.0, r=
         "LorenzSSM":{
             "n_states":n_states,
             "n_obs":n_obs,
-            "J":None,
-            "delta":np.zeros(n_states),
+            "J":5,
+            "delta":0.001,
             "A_fn":lambda z: np.array([
                     [-10, 10, 0],
                     [28, -1, -z[0]],
                     [0, z[0], -8.0/3]
                 ]),
             "h_fn":lambda x: x,
-            "delta_d":np.zeros((n_obs,1)),
-            "decimate":q,
+            "delta_d":0.02,
+            "decimate":False,
             "inverse_r2_dB":inverse_r2_dB,
-            "nu_dB":nu_dB
+            "nu_dB":-20,
+            "batch_size":batch_size
         },
     }
 

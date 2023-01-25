@@ -144,7 +144,7 @@ class LorenzAttractorModel(object):
         r2 = 1.0 / dB_to_lin(inverse_r2_dB)
         q2 = dB_to_lin(nu_dB - inverse_r2_dB)
         
-        print("Measurement variance: {}, Process variance: {}".format(r2, q2))
+        #print("Measurement variance: {}, Process variance: {}".format(r2, q2))
         
         e = np.random.multivariate_normal(np.zeros(self.d,), q2*np.eye(self.d),size=(T+1,))
         v = np.random.multivariate_normal(np.zeros(self.d,), r2*np.eye(self.d),size=(T,))
@@ -155,7 +155,7 @@ class LorenzAttractorModel(object):
             y[t] = self.h_fn(x[t]) + v[t]
         
         if self.decimate == True:
-            K = int(self.delta_d / self.delta)
+            K = self.delta_d // self.delta
             x_lorenz_d = x[0:T:K,:]
             y_lorenz_d = self.h_fn(x_lorenz_d) + np.random.multivariate_normal(np.zeros(self.d,), r2*np.eye(self.d),size=(len(x_lorenz_d),))
         else:
@@ -203,16 +203,14 @@ def generate_SSM_data(type_, T, parameters):
             decimate=parameters["decimate"]
                     )
         
-        X_arr = np.zeros((T, model.n_states))
-        Y_arr = np.zeros((T, model.n_obs))
+        X_arr = np.zeros((T, model.d))
+        Y_arr = np.zeros((T, model.d))
 
-        X_arr, Y_arr = model.generate_single_sequence(
-                T=T,
-                inverse_r2_dB=parameters["inverse_r2_dB"],
-                nu_dB=parameters["nu_dB"],
-                drive_noise=False,
-                add_noise_flag=False
-            )
+        X_arr, Y_arr, X_arr_d, Y_arr_d = model.generate_single_sequence(
+                                        T=T,
+                                        inverse_r2_dB=parameters["inverse_r2_dB"],
+                                        nu_dB=parameters["nu_dB"]
+                                    )
         
     return model, X_arr, Y_arr
 
