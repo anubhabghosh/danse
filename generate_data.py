@@ -159,12 +159,12 @@ class LorenzAttractorModel(object):
             x_lorenz_d = x[0:T:K,:]
             y_lorenz_d = self.h_fn(x_lorenz_d) + np.random.multivariate_normal(np.zeros(self.d,), r2*np.eye(self.d),size=(len(x_lorenz_d),))
         else:
-            x_lorenz_d = None
-            y_lorenz_d = None
+            x_lorenz_d = x
+            y_lorenz_d = y
 
-        return x, y, x_lorenz_d, y_lorenz_d
+        return x_lorenz_d, y_lorenz_d
 
-def generate_SSM_data(type_, T, parameters):
+def initialize_model(type_, parameters):
 
     if type_ == "LinearSSM":
 
@@ -180,6 +180,24 @@ def generate_SSM_data(type_, T, parameters):
                         Q=parameters["Q"],
                         R=parameters["R"])
 
+    elif type_ == "LorenzSSM":
+
+        model = LorenzAttractorModel(
+            d=3,
+            J=parameters["J"],
+            delta=parameters["delta"],
+            A_fn=parameters["A_fn"],
+            h_fn=parameters["h_fn"],
+            delta_d=parameters["delta_d"],
+            decimate=parameters["decimate"]
+                    )
+         
+    return model
+
+def generate_SSM_data(model, T, parameters):
+
+    if type_ == "LinearSSM":
+
         X_arr = np.zeros((T, model.n_states))
         Y_arr = np.zeros((T, model.n_obs))
 
@@ -193,27 +211,15 @@ def generate_SSM_data(type_, T, parameters):
 
     elif type_ == "LorenzSSM":
 
-        model = LorenzAttractorModel(
-            d=3,
-            J=parameters["J"],
-            delta=parameters["delta"],
-            A_fn=parameters["A_fn"],
-            h_fn=parameters["h_fn"],
-            delta_d=parameters["delta_d"],
-            decimate=parameters["decimate"]
-                    )
-        
         X_arr = np.zeros((T, model.d))
         Y_arr = np.zeros((T, model.d))
 
-        X_arr, Y_arr, X_arr_d, Y_arr_d = model.generate_single_sequence(
-                                        T=T,
-                                        inverse_r2_dB=parameters["inverse_r2_dB"],
-                                        nu_dB=parameters["nu_dB"]
-                                    )
+        X_arr, Y_arr = model.generate_single_sequence(T=T,
+                                inverse_r2_dB=parameters["inverse_r2_dB"],
+                                nu_dB=parameters["nu_dB"]
+                            )
         
-    return model, X_arr, Y_arr
-
+    return X_arr, Y_arr
 
 def generate_state_observation_pairs(type_, parameters, T=200, N_samples=1000):
 
@@ -225,17 +231,18 @@ def generate_state_observation_pairs(type_, parameters, T=200, N_samples=1000):
 
     Z_XY = {}
     Z_XY["num_samples"] = N_samples
-    Z_XY_data_lengths = []
+    Z_XY_data_lengths = [] 
 
-    count = 0
     Z_XY_data = []
+
+    Z_XY["ssm_model"] = initialize_model(type_, parameters)
 
     for i in range(N_samples):
         
-        model, Xi, Yi = generate_SSM_data(type_, T, parameters)
+        Xi, Yi = generate_SSM_data(Z_XY["ssm_model"], T, parameters)
         Z_XY_data_lengths.append(T)
         Z_XY_data.append([Xi, Yi])
-        
+
     Z_XY["data"] = np.row_stack(Z_XY_data).astype(object)
     #Z_pM["data"] = Z_pM_data
     Z_XY["trajectory_lengths"] = np.vstack(Z_XY_data_lengths)

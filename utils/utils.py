@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from torch import nn
 import os
 from torch.distributions import MultivariateNormal
 from torch.utils.data import Dataset, DataLoader
@@ -31,6 +32,10 @@ def count_params(model):
     total_num_params = sum(p.numel() for p in model.parameters())
     total_num_trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad == True)
     return total_num_params, total_num_trainable_params
+
+def mse_loss(x, xhat):
+    loss = nn.MSELoss()
+    return loss(xhat, x)
 
 def get_mvnpdf(mean, cov):
 
