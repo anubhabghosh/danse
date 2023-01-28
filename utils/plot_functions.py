@@ -33,7 +33,7 @@ def plot_state_trajectory(X, X_est=None, savefig=False, savefig_name=None):
     
     if savefig:
         plt.savefig(savefig_name)
-    plt.show()
+    #plt.show()
     return None
 
 def plot_measurement_data(Y, savefig=False, savefig_name=None):
@@ -47,7 +47,7 @@ def plot_measurement_data(Y, savefig=False, savefig_name=None):
     plt.legend()
     if savefig:
         plt.savefig(savefig_name)
-    plt.show()
+    #plt.show()
     return None
 
 def plot_state_trajectory_axes(X, X_est=None, savefig=False, savefig_name=None):
@@ -102,7 +102,7 @@ def plot_state_trajectory_axes(X, X_est=None, savefig=False, savefig_name=None):
     
     if savefig:
         plt.savefig(savefig_name)
-    plt.show()
+    #plt.show()
     return None
 
 def plot_measurement_data_axes(Y, Y_est=None, savefig=False, savefig_name=None):
@@ -135,5 +135,5 @@ def plot_measurement_data_axes(Y, Y_est=None, savefig=False, savefig_name=None):
     
     if savefig:
         plt.savefig(savefig_name)
-    plt.show()
+    #plt.show()
     return None

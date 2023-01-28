@@ -9,11 +9,12 @@ from ..utils.utils import dB_to_lin
 class EKF(nn.Module):
     """ This class implements an extended Kalman filter in PyTorch
     """
-    def __init__(self, n_states, n_obs, f=None, h=None, Q=None, R=None, inverse_r2_dB=None, nu_dB=None):
+    def __init__(self, n_states, n_obs, f=None, h=None, Q=None, R=None, inverse_r2_dB=None, nu_dB=None, device='cpu'):
         super(EKF, self).__init__()
 
         self.n_states = n_states
-        
+        self.device = device
+
         # Initializing the system model
         self.n_states = n_states # Setting the number of states of the Kalman filter
         self.n_obs = n_obs
@@ -26,21 +27,26 @@ class EKF(nn.Module):
             Q = q2 * torch.eye(self.n_states)
             R = r2 * torch.eye(self.n_obs)
         
-        self.Q_k = Q # Covariance matrix of the process noise, we assume process noise w_k ~ N(0, Q)
-        self.R_k = R # Covariance matrix of the measurement noise, we assume mesaurement noise v_k ~ N(0, R)
+        self.Q_k = self.push_to_device(Q) # Covariance matrix of the process noise, we assume process noise w_k ~ N(0, Q)
+        self.R_k = self.push_to_device(R) # Covariance matrix of the measurement noise, we assume mesaurement noise v_k ~ N(0, R)
         
         # Defining the required state to be estimate 
-        self.x_hat_pos_k = torch.zeros((n_states, 1)) # Assuming initial value of the state is zero, i.e. \hat{p}_0^{+} = 0
-        self.Pk_pos = torch.eye(n_states) # Assuming initial value of the state covariance for the filtered estimate is identity, i.e. P_{0 \vert 0} = I
-        self.Sk_pos_sqrt = torch.linalg.cholesky(self.Pk_pos) # Assuming initial value of the state covariance for the filtered estimate is identity, i.e. P_{0 \vert 0} = I
-        self.x_hat_neg_k = None # Prediction state \hat{x}_{k \vert k-1}
-        self.Sk_neg_sqrt = None # Cholesky factor of the state covariance matrix S_{k \vert k-1} = \sqrt{P_{k \vert k-1}}
-        self.Pk_neg = None # State covariance matrix P_{k \vert k-1}
-        self.Kk = torch.zeros(self.n_states) # The Kalman gain K_k (filtered version)
+        self.x_hat_pos_k = torch.zeros((self.n_states, 1), device=self.device) # Assuming initial value of the state is zero, i.e. \hat{p}_0^{+} = 0
+        self.Pk_pos = torch.eye(self.n_states, device=self.device) # Assuming initial value of the state covariance for the filtered estimate is identity, i.e. P_{0 \vert 0} = I
+        self.Sk_pos_sqrt = torch.cholesky(self.Pk_pos).to(self.device) # Assuming initial value of the state covariance for the filtered estimate is identity, i.e. P_{0 \vert 0} = I
+        self.x_hat_neg_k = torch.empty((self.n_states, 1), device=self.device) # Prediction state \hat{x}_{k \vert k-1}
+        self.Sk_neg_sqrt = torch.empty_like(self.Sk_pos_sqrt, device=self.device) # Cholesky factor of the state covariance matrix S_{k \vert k-1} = \sqrt{P_{k \vert k-1}}
+        self.Pk_neg = torch.empty_like(self.Pk_pos, device=self.device) # State covariance matrix P_{k \vert k-1}
+        self.Kk = torch.zeros((self.n_states,self.n_obs), device=self.device) # The Kalman gain K_k (filtered version)
 
         return None
     
-    def predict_estimate(self, Pk_pos_prev, G_k_prev, Q_k_prev, u_k=0.0):
+    def push_to_device(self, x):
+        """ Push the given tensor to the device
+        """
+        return torch.from_numpy(x).type(torch.FloatTensor).to(self.device)
+
+    def predict_estimate(self, Pk_pos_prev, Q_k_prev, u_k=0.0):
         """ This function helps implement the prediction step / time-update step of the Kalman filter, i.e. using 
         available observations, and previous state estimates, what is the next state estimate?
 
@@ -57,10 +63,10 @@ class EKF(nn.Module):
         
         # Implemeting a Square-Root Filtering version for numerical stability
         # Trying QR decomposition to get Pk_neg from Pk_pos
-        F_k_prev = self.compute_jac_f_k(x_=self.x_hat_pos_k, inputs_=u_k)
+        F_k_prev = self.compute_jac_f_k(x_=self.x_hat_pos_k, inputs_=u_k).to(self.device)
         self.Sk_pos_sqrt = torch.linalg.cholesky(Pk_pos_prev)
         Qk_prev_sqrt = torch.linalg.cholesky(Q_k_prev)
-        A_state = torch.cat((F_k_prev @ self.Sk_pos_sqrt, G_k_prev @ Qk_prev_sqrt), dim=1)
+        A_state = torch.cat((F_k_prev @ self.Sk_pos_sqrt, Qk_prev_sqrt), dim=1)
         assert A_state.shape[1] == 2*self.n_states, "A_state has a dimension problem"
         _, Ra = torch.linalg.qr(A_state.T)
         assert torch.allclose(Ra, torch.triu(Ra)), "Ra is not upper triangular" # check if upper triangular
@@ -80,15 +86,15 @@ class EKF(nn.Module):
             _type_: _description_
         """
         
-        self.H_k = self.compute_jac_h_k(x_=self.x_hat_neg_k)
+        self.H_k = self.compute_jac_h_k(x_=self.x_hat_neg_k).to(self.device)
         assert self.H_k.shape[1] == self.n_states, "Dimension of H_k is not consistent"
 
         # Trying to Square root algorithm since K_k is ill conditioned at the moment.
         # So, we use QR decomposition in the measurement equation
-        A_measurement = torch.block_diag([
-            [torch.sqrt(self.R_k) * torch.eye(self.H_k.shape[0]), self.H_k @ self.Sk_neg_sqrt],
-            [torch.zeros((self.n_states, self.H_k.shape[0])), self.Sk_neg_sqrt]
-            ])
+        A_measurement = torch.Tensor(np.block([
+            [torch.sqrt(self.R_k).numpy() * torch.eye(self.H_k.shape[0]).numpy(), self.H_k.numpy() @ self.Sk_neg_sqrt.numpy()],
+            [torch.zeros((self.n_states, self.H_k.shape[0])).numpy(), self.Sk_neg_sqrt.numpy()]
+            ])).type(torch.FloatTensor)
         
         Qa_measurement, Ra_measurement = torch.linalg.qr(A_measurement.T)
         Re_k_sqrt = Ra_measurement.T[:self.H_k.shape[0],:self.H_k.shape[0]]
@@ -132,10 +138,9 @@ class EKF(nn.Module):
 
             for k in range(0, T):
 
-                x_rec_hat_neg_k, Pk_neg = self.predict_estimate(Pk_pos_prev=self.Pk_pos,
-                                        G_k_prev=self.G_k, Q_k_prev=self.Q_k)
+                x_rec_hat_neg_k, Pk_neg = self.predict_estimate(Pk_pos_prev=self.Pk_pos, Q_k_prev=self.Q_k)
                 
-                x_rec_hat_pos_k, Pk_pos = self.filtered_estimate(y_k=Y[i])
+                x_rec_hat_pos_k, Pk_pos = self.filtered_estimate(y_k=Y[i,k].view(-1,1))
             
                 # Save filtered state estimates
                 traj_estimated[i,k,:] = x_rec_hat_pos_k

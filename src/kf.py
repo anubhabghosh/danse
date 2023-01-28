@@ -3,8 +3,8 @@
 #########################################################################
 import numpy as np
 import torch
-from torch import nn, linalg
-from ..utils.utils import dB_to_lin, mse_loss
+from torch import nn
+from utils.utils import dB_to_lin, mse_loss
 from timeit import default_timer as timer
 import sys
 
@@ -27,8 +27,8 @@ class KF(nn.Module):
         if (not inverse_r2_dB is None) and (not nu_dB is None):
             r2 = 1.0 / dB_to_lin(inverse_r2_dB)
             q2 = dB_to_lin(nu_dB - inverse_r2_dB)
-            Q = q2 * torch.eye(self.n_states)
-            R = r2 * torch.eye(self.n_obs)
+            Q = q2 * np.eye(self.n_states)
+            R = r2 * np.eye(self.n_obs)
 
         self.Q_k = self.push_to_device(Q) # Covariance matrix of the process noise, we assume process noise w_k ~ N(0, Q)
         self.R_k = self.push_to_device(R) # Covariance matrix of the measurement noise, we assume mesaurement noise v_k ~ N(0, R)
@@ -36,7 +36,7 @@ class KF(nn.Module):
         # Defining the required state to be estimate 
         self.x_hat_pos_k = torch.zeros((self.n_states, 1), device=self.device) # Assuming initial value of the state is zero, i.e. \hat{p}_0^{+} = 0
         self.Pk_pos = torch.eye(self.n_states, device=self.device) # Assuming initial value of the state covariance for the filtered estimate is identity, i.e. P_{0 \vert 0} = I
-        self.Sk_pos_sqrt = self.push_to_device(torch.linalg.cholesky(self.Pk_pos)) # Assuming initial value of the state covariance for the filtered estimate is identity, i.e. P_{0 \vert 0} = I
+        self.Sk_pos_sqrt = torch.cholesky(self.Pk_pos).to(self.device) # Assuming initial value of the state covariance for the filtered estimate is identity, i.e. P_{0 \vert 0} = I
         self.x_hat_neg_k = torch.empty((self.n_states, 1), device=self.device) # Prediction state \hat{x}_{k \vert k-1}
         self.Sk_neg_sqrt = torch.empty_like(self.Sk_pos_sqrt, device=self.device) # Cholesky factor of the state covariance matrix S_{k \vert k-1} = \sqrt{P_{k \vert k-1}}
         self.Pk_neg = torch.empty_like(self.Pk_pos, device=self.device) # State covariance matrix P_{k \vert k-1}
@@ -47,9 +47,9 @@ class KF(nn.Module):
     def push_to_device(self, x):
         """ Push the given tensor to the device
         """
-        return x.to(self.device)
+        return torch.from_numpy(x).type(torch.FloatTensor).to(self.device)
 
-    def predict_estimate(self, F_k_prev, Pk_pos_prev, G_k_prev, Q_k_prev):
+    def predict_estimate(self, F_k_prev, Pk_pos_prev, Q_k_prev):
         """ This function helps implement the prediction step / time-update step of the Kalman filter, i.e. using 
         available observations, and previous state estimates, what is the next state estimate?
 
@@ -64,11 +64,11 @@ class KF(nn.Module):
         
         # Implemeting a Square-Root Filtering version for numerical stability
         # Trying QR decomposition to get Pk_neg from Pk_pos
-        self.Sk_pos_sqrt = torch.linalg.cholesky(Pk_pos_prev)
-        Qk_prev_sqrt = torch.linalg.cholesky(Q_k_prev)
-        A_state = torch.cat((F_k_prev @ self.Sk_pos_sqrt, G_k_prev @ Qk_prev_sqrt), dim=1)
+        self.Sk_pos_sqrt = torch.cholesky(Pk_pos_prev)
+        Qk_prev_sqrt = torch.cholesky(Q_k_prev)
+        A_state = torch.cat((F_k_prev @ self.Sk_pos_sqrt, Qk_prev_sqrt), dim=1)
         assert A_state.shape[1] == 2*self.n_states, "A_state has a dimension problem"
-        _, Ra = torch.linalg.qr(A_state.T)
+        _, Ra = torch.qr(A_state.T)
         assert torch.allclose(Ra, torch.triu(Ra)), "Ra is not upper triangular" # check if upper triangular
         self.Sk_neg_sqrt = Ra.T[:,:self.n_states]
 
@@ -87,15 +87,15 @@ class KF(nn.Module):
 
         # Trying to Square root algorithm since K_k is ill conditioned at the moment.
         # So, we use QR decomposition in the measurement equation
-        A_measurement = torch.block_diag([
-            [torch.sqrt(self.R_k) * torch.eye(self.H_k.shape[0]), self.H_k @ self.Sk_neg_sqrt],
-            [torch.zeros((self.n_states, self.H_k.shape[0])), self.Sk_neg_sqrt]
-            ])
+        A_measurement = torch.Tensor(np.block([
+            [torch.sqrt(self.R_k).numpy() * torch.eye(self.H_k.shape[0]).numpy(), self.H_k.numpy() @ self.Sk_neg_sqrt.numpy()],
+            [torch.zeros((self.n_states, self.H_k.shape[0])).numpy(), self.Sk_neg_sqrt.numpy()]
+            ])).type(torch.FloatTensor)
         
-        Qa_measurement, Ra_measurement = torch.linalg.qr(A_measurement.T)
+        Qa_measurement, Ra_measurement = torch.qr(A_measurement.T)
         Re_k_sqrt = Ra_measurement.T[:self.H_k.shape[0],:self.H_k.shape[0]]
         K_k_Re_k_sqrt = Ra_measurement.T[self.H_k.shape[0]:,:self.H_k.shape[0]]
-        self.K_k = K_k_Re_k_sqrt @ torch.linalg.inv(Re_k_sqrt)
+        self.K_k = K_k_Re_k_sqrt @ torch.inverse(Re_k_sqrt)
         assert self.K_k.shape[0] == self.n_states, "Kalman gain has a dimension issue"
 
         self.Sk_pos_sqrt = Ra_measurement.T[self.H_k.shape[0]:,self.H_k.shape[0]:]
@@ -161,7 +161,7 @@ class KF(nn.Module):
                     #Also save covariances
                     Pk_estimated[i,j,k,:,:] = Pk_pos
 
-                mse_arr[j] = mse_loss(traj_estimated[i], X[i])  # Calculate the squared error across the length of a single sequence
+                mse_arr[j] = mse_loss(traj_estimated[i,j], X[j])  # Calculate the squared error across the length of a single sequence
                 print("batch: {}, sequence: {}, mse_loss: {}".format(i+1, j+1, mse_arr[j]), file=orig_stdout)
                 print("batch: {}, sequence: {}, mse_loss: {}".format(i+1, j+1, mse_arr[j]))
 
