@@ -123,7 +123,7 @@ def push_model(nets, device='cpu'):
 
 class DANSE(nn.Module):
 
-    def __init__(self, n_states, n_obs, mu_w, C_w, H, mu_x0, C_x0, rnn_type, rnn_params_dict, device='cpu'):
+    def __init__(self, n_states, n_obs, mu_w, C_w, H, mu_x0, C_x0, batch_size, rnn_type, rnn_params_dict, device='cpu'):
         super(DANSE, self).__init__()
 
         self.device = device
@@ -143,6 +143,8 @@ class DANSE(nn.Module):
         # Initialize the observation model matrix 
         self.H = self.push_to_device(H)
         
+        self.batch_size = batch_size
+
         # Initialize RNN type
         self.rnn_type = rnn_type
 
@@ -176,7 +178,7 @@ class DANSE(nn.Module):
 
     def compute_marginal_mean_vars(self, mu_xt_yt_prev, L_xt_yt_prev):
 
-        self.mu_yt_current = torch.einsum('ij,ntj->nti',self.H, mu_xt_yt_prev) + self.mu_w
+        self.mu_yt_current = torch.einsum('ij,ntj->nti',self.H, mu_xt_yt_prev) + self.mu_w.squeeze(-1)
         self.L_yt_current = self.H @ L_xt_yt_prev @ self.H.T + self.C_w
     
     def compute_posterior_mean_vars(self, Yi_batch):
@@ -215,7 +217,7 @@ class DANSE(nn.Module):
     '''
     def compute_logpdf_Gaussian(self, Y):
         
-        _, T, _ = T.shape 
+        _, T, _ = Y.shape 
         logprob = 0.5 * self.n_obs * T * math.log(math.pi*2) - 0.5 * torch.logdet(self.L_yt_current).sum(1) \
             - 0.5 * torch.einsum('nti,nti->nt',
             (Y - self.mu_yt_current), 
@@ -237,7 +239,7 @@ class DANSE(nn.Module):
         mu_batch, vars_batch = self.rnn.forward(x=Yi_batch)
         mu_xt_yt_prev, L_xt_yt_prev = self.compute_prior_mean_vars(mu_xt_yt_prev=mu_batch, L_xt_yt_prev=vars_batch)
         self.compute_marginal_mean_vars(mu_xt_yt_prev=mu_xt_yt_prev, L_xt_yt_prev=L_xt_yt_prev)
-        logprob_batch = self.compute_logpdf_Gaussian(Y=Yi_batch)
+        logprob_batch = self.compute_logpdf_Gaussian(Y=Yi_batch) / Yi_batch.shape[1] # Per dim of sequence length
         log_pYT_batch_avg = logprob_batch.mean(0)
 
         return log_pYT_batch_avg
@@ -255,7 +257,6 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
     #scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.998)
     #scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=nepochs//3, gamma=0.9) # gamma was initially 0.9
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=nepochs//6, gamma=0.9) # gamma is now set to 0.8
-    criterion = nn.MSELoss() # By default reduction is 'mean'
     tr_losses = []
     val_losses = []
 
@@ -268,13 +269,14 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
     if save_chkpoints == "all" or save_chkpoints == "some":
         # No grid search
         if logfile_path is None:
-            training_logfile = "./log/training_{}_usenorm_{}_NS25000_modified.log".format(model.model_type)
+            training_logfile = "./log/danse_{}.log".format(model.rnn_type)
         else:
             training_logfile = logfile_path
+
     elif save_chkpoints == None:
         # Grid search
         if logfile_path is None:
-            training_logfile = "./log/gs_training_{}_usenorm_{}_NS25000_modified.log".format(model.model_type)
+            training_logfile = "./log/gs_training_danse_{}.log".format(model.rnn_type)
         else:
             training_logfile = logfile_path
     
@@ -282,7 +284,7 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
     
     patience = 0
     num_patience = 3 
-    min_delta = options["min_delta"] # 1e-3 for simpler model, for complicated model we use 1e-2
+    min_delta = options['rnn_params_dict'][model.rnn_type]["min_delta"] # 1e-3 for simpler model, for complicated model we use 1e-2
     #min_tol = 1e-3 # for tougher model, we use 1e-2, easier models we use 1e-5
     check_patience=False
     best_val_loss = np.inf
@@ -319,13 +321,12 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
         
             for i, data in enumerate(train_loader, 0):
             
-                tr_X_batch, tr_Y_batch = data
+                tr_Y_batch, tr_X_batch = data
                 optimizer.zero_grad()
                 Y_train_batch = Variable(tr_Y_batch, requires_grad=False).type(torch.FloatTensor).to(device)
-                log_pY_train_batch = model.forward(Y_train_batch)
+                log_pY_train_batch = -model.forward(Y_train_batch)
                 log_pY_train_batch.backward()
                 optimizer.step()
-                #scheduler.step()
 
                 # print statistics
                 tr_running_loss += log_pY_train_batch.item()
@@ -336,7 +337,7 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
                     #print("Epoch: {}/{}, Batch index: {}, Training loss: {}".format(epoch+1, nepochs, i+1, tr_running_loss / 100), file=orig_stdout)
                     tr_running_loss = 0.0
             
-            scheduler.step()
+            #scheduler.step()
 
             endtime = timer()
             # Measure wallclock time
@@ -346,9 +347,9 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
                 
                 for i, data in enumerate(val_loader, 0):
                     
-                    val_X_batch, val_Y_batch = data
+                    val_Y_batch, val_X_batch = data
                     Y_val_batch = Variable(val_Y_batch, requires_grad=False).type(torch.FloatTensor).to(device)
-                    log_pY_val_batch = model.forward(Y_val_batch)
+                    log_pY_val_batch = -model.forward(Y_val_batch)
                     val_loss_epoch_sum += log_pY_val_batch.item()
             
             # Loss at the end of each epoch
@@ -356,27 +357,27 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
             val_loss = val_loss_epoch_sum / len(val_loader)
 
             # Record the validation loss per epoch
-            if (epoch + 1) > 100: # nepochs/6 for complicated, 100 for simpler model
-                model_monitor.record(val_loss)
+            #if (epoch + 1) > 100: # nepochs/6 for complicated, 100 for simpler model
+            #    model_monitor.record(val_loss)
 
             # Displaying loss at an interval of 200 epochs
-            if tr_verbose == True and (((epoch + 1) % 100) == 0 or epoch == 0):
+            if tr_verbose == True and (((epoch + 1) % 5) == 0 or epoch == 0):
                 
                 print("Epoch: {}/{}, Training MSE Loss:{:.9f}, Val. MSE Loss:{:.9f} ".format(epoch+1, 
-                model.num_epochs, tr_loss, val_loss), file=orig_stdout)
+                model.rnn.num_epochs, tr_loss, val_loss), file=orig_stdout)
                 #save_model(model, model_filepath + "/" + "{}_ckpt_epoch_{}.pt".format(model.model_type, epoch+1))
 
                 print("Epoch: {}/{}, Training MSE Loss:{:.9f}, Val. MSE Loss:{:.9f}, Time_Elapsed:{:.4f} secs".format(epoch+1, 
-                model.num_epochs, tr_loss, val_loss, time_elapsed))
+                model.rnn.num_epochs, tr_loss, val_loss, time_elapsed))
             
             # Checkpointing the model every few  epochs
             #if (((epoch + 1) % 500) == 0 or epoch == 0) and save_chkpoints == True:     
             if (((epoch + 1) % 100) == 0 or epoch == 0) and save_chkpoints == "all": 
                 # Checkpointing model every few epochs, in case of grid_search is being done, save_chkpoints = None
-                save_model(model, model_filepath + "/" + "danse_{}_ckpt_epoch_{}.pt".format(model.rnn.model_type, epoch+1))
+                save_model(model, model_filepath + "/" + "danse_{}_ckpt_epoch_{}.pt".format(model.rnn_type, epoch+1))
             elif (((epoch + 1) % nepochs) == 0) and save_chkpoints == "some": 
                 # Checkpointing model at the end of training epochs, in case of grid_search is being done, save_chkpoints = None
-                save_model(model, model_filepath + "/" + "danse_{}_ckpt_epoch_{}.pt".format(model.rnn.model_type, epoch+1))
+                save_model(model, model_filepath + "/" + "danse_{}_ckpt_epoch_{}.pt".format(model.rnn_type, epoch+1))
             
             # Save best model in case validation loss improves
             '''
@@ -407,6 +408,7 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
             tr_losses.append(tr_loss)
             val_losses.append(val_loss)
 
+            '''
             # Check monitor flag
             if model_monitor.monitor(epoch=epoch+1) == True:
 
@@ -431,7 +433,7 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
                 #best_val_epoch = epoch+1 # Corresponding value of epoch
                 #best_model_wts = copy.deepcopy(model.state_dict()) # Weights for the best model
 
-        
+            '''
         # Save the best model as per validation loss at the end
         print("\nSaving the best model at epoch={}, with training loss={}, validation loss={}".format(best_val_epoch, tr_loss_for_best_val_loss, best_val_loss))
         
@@ -469,6 +471,7 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
 def test_danse(test_loader, options, device, model_file=None, test_logfile_path = None):
 
     test_loss_epoch_sum = 0.0
+    te_log_pY_epoch_sum = 0.0 
     print("################ Evaluation Begins ################ \n")    
     
     # Set model in evaluation mode
@@ -486,21 +489,24 @@ def test_danse(test_loader, options, device, model_file=None, test_logfile_path 
         
         for i, data in enumerate(test_loader, 0):
                 
-            te_X_batch, te_Y_batch = data
+            te_Y_batch, te_X_batch = data
             Y_test_batch = Variable(te_Y_batch, requires_grad=False).type(torch.FloatTensor).to(device)
             te_X_predictions_batch = model.compute_predictions(Y_test_batch)
+            log_pY_test_batch = -model.forward(Y_test_batch)
             test_mse_loss_batch = criterion(te_X_batch, te_X_predictions_batch)
             # print statistics
             test_loss_epoch_sum += test_mse_loss_batch.item()
+            te_log_pY_epoch_sum += log_pY_test_batch.item()
 
-    test_loss = test_loss_epoch_sum / len(test_loader)
+    test_mse_loss = test_loss_epoch_sum / len(test_loader)
+    test_NLL_loss = te_log_pY_epoch_sum / len(test_loader)
 
-    print('Test loss: {:.3f} using weights from file: {} %'.format(test_loss, model_file))
+    print('Test NLL loss: {:.3f}, Test MSE loss: {:.3f} using weights from file: {} %'.format(test_NLL_loss, test_mse_loss, model_file))
 
     with open(test_log, "a") as logfile_test:
-        logfile_test.write('Test loss: {:.3f} using weights from file: {}'.format(test_loss, model_file))
+        logfile_test.write('Test NLL loss: {:.3f}, Test MSE loss: {:.3f} using weights from file: {}'.format(test_NLL_loss, test_mse_loss, model_file))
 
-    return test_loss    
+    return test_mse_loss   
         
     
 

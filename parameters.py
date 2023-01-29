@@ -7,7 +7,7 @@ torch.manual_seed(10)
 def get_parameters(N=1000, T=100, n_states=5, n_obs=5, q=1.0, r=1.0, 
     inverse_r2_dB=40, nu_dB=0):
 
-    H_DANSE = torch.randn(n_obs, n_states)
+    H_DANSE = np.eye(n_obs, n_states)
 
     ssm_parameters_dict = {
         # Parameters of the linear model 
@@ -33,7 +33,7 @@ def get_parameters(N=1000, T=100, n_states=5, n_obs=5, q=1.0, r=1.0,
         "LorenzSSM":{
             "n_states":n_states,
             "n_obs":n_obs,
-            "J":5,
+            "J":20,
             "delta":0.01,
             "A_fn":lambda z: np.array([
                     [-10, 10, 0],
@@ -53,40 +53,43 @@ def get_parameters(N=1000, T=100, n_states=5, n_obs=5, q=1.0, r=1.0,
         "danse":{
             "n_states":n_states,
             "n_obs":n_obs,
-            "mu_w":torch.zeros(n_obs,1),
-            "C_w":torch.eye(n_obs,n_obs),
+            "mu_w":np.zeros((n_obs,1)),
+            "C_w":np.eye(n_obs,n_obs),
             "H":H_DANSE,
-            "mu_x0":torch.zeros(n_states,1),
-            "C_x0":torch.zeros(n_states,n_states),
+            "mu_x0":np.zeros((n_states,1)),
+            "C_x0":np.zeros((n_states,n_states)),
             "batch_size":64,
             "rnn_type":"gru",
             "rnn_params_dict":{
                 "gru":{
                     "model_type":"gru",
                     "input_size":n_obs,
-                    "output_size":2*n_states,
+                    "output_size":n_states,
                     "n_hidden":40,
                     "n_layers":2,
-                    "lr":5e-4,
-                    "num_epochs":3000
+                    "lr":1e-3,
+                    "num_epochs":30,
+                    "min_delta":1e-3
                 },
                 "rnn":{
                     "model_type":"gru",
                     "input_size":n_obs,
-                    "output_size":2*n_states,
+                    "output_size":n_states,
                     "n_hidden":40,
                     "n_layers":2,
-                    "lr":5e-4,
-                    "num_epochs":3000
+                    "lr":1e-3,
+                    "num_epochs":30,
+                    "min_delta":1e-3
                 },
                 "lstm":{
                     "model_type":"lstm",
                     "input_size":n_obs,
-                    "output_size":2*n_states,
+                    "output_size":n_states,
                     "n_hidden":50,
                     "n_layers":2,
                     "lr":1e-3,
-                    "num_epochs":4000
+                    "num_epochs":30,
+                    "min_delta":1e-3
                 }
             }
         },

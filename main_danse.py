@@ -152,31 +152,36 @@ def main():
         print("Creating {}".format(os.path.join(modelfile_path, main_exp_name)))
         os.makedirs(os.path.join(modelfile_path, main_exp_name), exist_ok=True)
     
-    """
+    modelfile_path = os.path.join(modelfile_path, main_exp_name) # Modify the modelfile path to add full model file 
+    
     if mode.lower() == "train":
-        model_danse = DANSE(**est_parameters_dict[model_type])
-        tr_verbose = True  
 
+        model_danse = DANSE(**est_parameters_dict['danse'])
+        tr_verbose = True  
+        
         # Starting model training
-        tr_losses, val_losses, best_val_loss, tr_loss_for_best_val_loss, model_danse_trained = train_danse(
+        tr_losses, val_losses, _, _, _ = train_danse(
             model=model_danse,
             train_loader=train_loader,
             val_loader=val_loader,
-            nepochs=est_parameters_dict[model_type]['rnn_params_dict']['num_epochs'],
+            options=est_parameters_dict['danse'],
+            nepochs=model_danse.rnn.num_epochs,
             logfile_path=tr_logfile_name_with_path,
-            save_chkpoints=False,
+            modelfile_path=modelfile_path,
+            save_chkpoints="some",
             device=device,
             tr_verbose=tr_verbose
         )
         #if tr_verbose == True:
         #    plot_losses(tr_losses=tr_losses, val_losses=val_losses, logscale=False)
-        
+            
         losses_model = {}
         losses_model["tr_losses"] = tr_losses
         losses_model["val_losses"] = val_losses
 
         with open(os.path.join(os.path.join(logfile_path, main_exp_name), 
-            'danse_{}_losses_eps{}.json'.format(est_parameters_dict[model_type]['rnn_type'], est_parameters_dict[model_type]['rnn_params_dict']["num_epochs"])), 'w') as f:
+            'danse_{}_losses_eps{}.json'.format(est_parameters_dict['danse']['rnn_type'], 
+            est_parameters_dict['danse']['rnn_params_dict'][model_type]['num_epochs'])), 'w') as f:
             f.write(json.dumps(losses_model, cls=NDArrayEncoder, indent=2))
 
     elif mode.lower() == "test":
@@ -184,12 +189,12 @@ def main():
         #model_file_saved = "./model_checkpoints/{}_usenorm_{}_ckpt_epoch_{}.pt".format(model_type, usenorm_flag, epoch_test)
         te_loss = test_danse(
             test_loader=test_loader,
-            options=est_parameters_dict[model_type],
+            options=est_parameters_dict['danse'],
             device=device,
             model_file=model_file_saved,
             test_logfile_path=te_logfile_name_with_path
             )
-    """
+    
     return None
 
 if __name__ == "__main__":
