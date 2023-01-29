@@ -123,23 +123,25 @@ def push_model(nets, device='cpu'):
 
 class DANSE(nn.Module):
 
-    def __init__(self, n_states, n_obs, mu_w, C_w, H, mu_x0, C_x0, rnn_type, rnn_params_dict):
+    def __init__(self, n_states, n_obs, mu_w, C_w, H, mu_x0, C_x0, rnn_type, rnn_params_dict, device='cpu'):
         super(DANSE, self).__init__()
+
+        self.device = device
 
         # Initialize the paramters of the state estimator
         self.n_states = n_states
         self.n_obs = n_obs
         
         # Initializing the parameters of the initial state
-        self.mu_x0 = mu_x0
-        self.C_x0 = C_x0
+        self.mu_x0 = self.push_to_device(mu_x0)
+        self.C_x0 = self.push_to_device(C_x0)
 
         # Initializing the parameters of the measurement noise
-        self.mu_w = mu_w
-        self.C_w = C_w
+        self.mu_w = self.push_to_device(mu_w)
+        self.C_w = self.push_to_device(C_w)
 
         # Initialize the observation model matrix 
-        self.H = H
+        self.H = self.push_to_device(H)
         
         # Initialize RNN type
         self.rnn_type = rnn_type
@@ -161,15 +163,21 @@ class DANSE(nn.Module):
         self.mu_xt_yt_prev = None
         self.L_xt_yt_prev = None
     
+    def push_to_device(self, x):
+        """ Push the given tensor to the device
+        """
+        return torch.from_numpy(x).type(torch.FloatTensor).to(self.device)
+
     def compute_prior_mean_vars(self, mu_xt_yt_prev, L_xt_yt_prev):
 
         self.mu_xt_yt_prev = mu_xt_yt_prev
         self.L_xt_yt_prev = create_diag(L_xt_yt_prev)
+        return self.mu_xt_yt_prev, self.L_xt_yt_prev
 
-    def compute_marginal_mean_vars(self):
+    def compute_marginal_mean_vars(self, mu_xt_yt_prev, L_xt_yt_prev):
 
-        self.mu_yt_current = torch.einsum('ij,ntj->nti',self.H, self.mu_xt_yt_prev) + self.mu_w
-        self.L_yt_current = self.H @ self.L_xt_yt_prev @ self.H.T + self.C_w
+        self.mu_yt_current = torch.einsum('ij,ntj->nti',self.H, mu_xt_yt_prev) + self.mu_w
+        self.L_yt_current = self.H @ L_xt_yt_prev @ self.H.T + self.C_w
     
     def compute_posterior_mean_vars(self, Yi_batch):
 
@@ -215,11 +223,20 @@ class DANSE(nn.Module):
 
         return logprob
 
-    def compute_logprob_batch_full(self, Yi_batch):
+    def compute_predictions(self, Y_test_batch):
+
+        mu_x_given_Y_test_batch, vars_x_given_Y_test_batch = self.rnn.forward(x=Y_test_batch)
+        mu_xt_yt_prev_test, L_xt_yt_prev_test = self.compute_prior_mean_vars(
+            mu_xt_yt_prev=mu_x_given_Y_test_batch,
+            L_xt_yt_prev=vars_x_given_Y_test_batch
+            )
+        return mu_xt_yt_prev_test, L_xt_yt_prev_test
+
+    def forward(self, Yi_batch):
 
         mu_batch, vars_batch = self.rnn.forward(x=Yi_batch)
-        self.compute_prior_mean_vars(mu_xt_yt_prev=mu_batch, L_xt_yt_prev=vars_batch)
-        self.compute_marginal_mean_vars()
+        mu_xt_yt_prev, L_xt_yt_prev = self.compute_prior_mean_vars(mu_xt_yt_prev=mu_batch, L_xt_yt_prev=vars_batch)
+        self.compute_marginal_mean_vars(mu_xt_yt_prev=mu_xt_yt_prev, L_xt_yt_prev=L_xt_yt_prev)
         logprob_batch = self.compute_logpdf_Gaussian(Y=Yi_batch)
         log_pYT_batch_avg = logprob_batch.mean(0)
 
@@ -227,13 +244,14 @@ class DANSE(nn.Module):
 
 
 def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path, modelfile_path, save_chkpoints, device='cpu', tr_verbose=False):
-
-    model = DANSE(**options)
+    
+    # Push the model to device and count parameters
     model = push_model(nets=model, device=device)
     total_num_params, total_num_trainable_params = count_params(model)
     
+    # Set the model to training
     model.train()
-    optimizer = optim.Adam(model.parameters(), lr=model.lr)
+    optimizer = optim.Adam(model.parameters(), lr=model.rnn.lr)
     #scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.998)
     #scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=nepochs//3, gamma=0.9) # gamma was initially 0.9
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=nepochs//6, gamma=0.9) # gamma is now set to 0.8
@@ -301,19 +319,17 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
         
             for i, data in enumerate(train_loader, 0):
             
-                tr_inputs_batch, tr_targets_batch = data
+                tr_X_batch, tr_Y_batch = data
                 optimizer.zero_grad()
-                X_train = Variable(tr_inputs_batch, requires_grad=False).type(torch.FloatTensor).to(device)
-                tr_predictions_batch = model.forward(X_train)
-                tr_targets_batch = torch.cat((tr_targets_batch[:, :-2, :], torch.sqrt(tr_targets_batch[:, -2:, :])), dim=1) # Ensure that the network models std.devs
-                tr_loss_batch = criterion(tr_predictions_batch, tr_targets_batch.squeeze(2).to(device))
-                tr_loss_batch.backward()
+                Y_train_batch = Variable(tr_Y_batch, requires_grad=False).type(torch.FloatTensor).to(device)
+                log_pY_train_batch = model.forward(Y_train_batch)
+                log_pY_train_batch.backward()
                 optimizer.step()
                 #scheduler.step()
 
                 # print statistics
-                tr_running_loss += tr_loss_batch.item()
-                tr_loss_epoch_sum += tr_loss_batch.item()
+                tr_running_loss += log_pY_train_batch.item()
+                tr_loss_epoch_sum += log_pY_train_batch.item()
 
                 if i % 100 == 99 and ((epoch + 1) % 100 == 0):    # print every 10 mini-batches
                     #print("Epoch: {}/{}, Batch index: {}, Training loss: {}".format(epoch+1, nepochs, i+1, tr_running_loss / 100))
@@ -330,13 +346,10 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
                 
                 for i, data in enumerate(val_loader, 0):
                     
-                    val_inputs_batch, val_targets_batch = data
-                    X_val = Variable(val_inputs_batch, requires_grad=False).type(torch.FloatTensor).to(device)
-                    val_predictions_batch = model.forward(X_val)
-                    val_targets_batch = torch.cat((val_targets_batch[:, :-2, :], torch.sqrt(val_targets_batch[:, -2:, :])), dim=1) # Ensure that the network models std.devs
-                    val_loss_batch = criterion(val_predictions_batch, val_targets_batch.squeeze(2).to(device))
-                    # print statistics
-                    val_loss_epoch_sum += val_loss_batch.item()
+                    val_X_batch, val_Y_batch = data
+                    Y_val_batch = Variable(val_Y_batch, requires_grad=False).type(torch.FloatTensor).to(device)
+                    log_pY_val_batch = model.forward(Y_val_batch)
+                    val_loss_epoch_sum += log_pY_val_batch.item()
             
             # Loss at the end of each epoch
             tr_loss = tr_loss_epoch_sum / len(train_loader)
@@ -360,10 +373,10 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
             #if (((epoch + 1) % 500) == 0 or epoch == 0) and save_chkpoints == True:     
             if (((epoch + 1) % 100) == 0 or epoch == 0) and save_chkpoints == "all": 
                 # Checkpointing model every few epochs, in case of grid_search is being done, save_chkpoints = None
-                save_model(model, model_filepath + "/" + "{}_usenorm_{}_ckpt_epoch_{}.pt".format(model.model_type, epoch+1))
+                save_model(model, model_filepath + "/" + "danse_{}_ckpt_epoch_{}.pt".format(model.rnn.model_type, epoch+1))
             elif (((epoch + 1) % nepochs) == 0) and save_chkpoints == "some": 
                 # Checkpointing model at the end of training epochs, in case of grid_search is being done, save_chkpoints = None
-                save_model(model, model_filepath + "/" + "{}_usenorm_{}_ckpt_epoch_{}.pt".format(model.model_type, epoch+1))
+                save_model(model, model_filepath + "/" + "danse_{}_ckpt_epoch_{}.pt".format(model.rnn.model_type, epoch+1))
             
             # Save best model in case validation loss improves
             '''
@@ -426,10 +439,10 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
         if save_chkpoints == "all" or save_chkpoints == "some":
             # Save the best model using the designated filename
             if not best_model_wts is None:
-                model_filename = "{}_usenorm_{}_ckpt_epoch_{}_best.pt".format(model.model_type, best_val_epoch)
+                model_filename = "danse_{}_ckpt_epoch_{}_best.pt".format(model.rnn_type, best_val_epoch)
                 torch.save(best_model_wts, model_filepath + "/" + model_filename)
             else:
-                model_filename = "{}_usenorm_{}_ckpt_epoch_{}_best.pt".format(model.model_type, epoch+1)
+                model_filename = "danse_usenorm_{}_ckpt_epoch_{}_best.pt".format(model.rnn_type, epoch+1)
                 print("Saving last model as best...")
                 save_model(model, model_filepath + "/" + model_filename)
         #elif save_chkpoints == False:
@@ -444,7 +457,7 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
         else:
             print("Interrupted!! ...saving the model at epoch:{}".format(epoch+1))
 
-        model_filename = "{}_usenorm_{}_ckpt_epoch_{}_latest.pt".format(model.model_type, epoch+1)
+        model_filename = "{}_usenorm_{}_ckpt_epoch_{}_latest.pt".format(model.rnn_type, epoch+1)
         torch.save(model, model_filepath + "/" + model_filename)
 
     print("------------------------------ Training ends --------------------------------- \n")
@@ -453,9 +466,8 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
 
     return tr_losses, val_losses, best_val_loss, tr_loss_for_best_val_loss, model
 
-def test_danse(options, test_loader, device, model_file=None, usenorm_flag=0, test_logfile_path = None):
+def test_danse(test_loader, options, device, model_file=None, test_logfile_path = None):
 
-    te_running_loss = 0.0
     test_loss_epoch_sum = 0.0
     print("################ Evaluation Begins ################ \n")    
     
@@ -466,7 +478,7 @@ def test_danse(options, test_loader, device, model_file=None, usenorm_flag=0, te
     model = push_model(nets=model, device=device)
     model.eval()
     if not test_logfile_path is None:
-        test_log = "./log/test_{}_usenorm_{}_trial1.log".format(usenorm_flag, options["model_type"])
+        test_log = "./log/test_danse.log"
     else:
         test_log = test_logfile_path
 
@@ -474,20 +486,21 @@ def test_danse(options, test_loader, device, model_file=None, usenorm_flag=0, te
         
         for i, data in enumerate(test_loader, 0):
                 
-            te_inputs_batch, te_targets_batch = data
-            X_test = Variable(te_inputs_batch, requires_grad=False).type(torch.FloatTensor).to(device)
-            test_predictions_batch = model.forward(X_test)
-            te_targets_batch = torch.cat((te_targets_batch[:, :-2, :], torch.sqrt(te_targets_batch[:, -2:, :])), dim=1) # Ensure that the network models std.devs
-            test_loss_batch = criterion(test_predictions_batch, te_targets_batch.squeeze(2).to(device))
+            te_X_batch, te_Y_batch = data
+            Y_test_batch = Variable(te_Y_batch, requires_grad=False).type(torch.FloatTensor).to(device)
+            te_X_predictions_batch = model.compute_predictions(Y_test_batch)
+            test_mse_loss_batch = criterion(te_X_batch, te_X_predictions_batch)
             # print statistics
-            test_loss_epoch_sum += test_loss_batch.item()
+            test_loss_epoch_sum += test_mse_loss_batch.item()
 
     test_loss = test_loss_epoch_sum / len(test_loader)
 
     print('Test loss: {:.3f} using weights from file: {} %'.format(test_loss, model_file))
 
     with open(test_log, "a") as logfile_test:
-        logfile_test.write('Test loss: {:.3f} using weights from file: {}'.format(test_loss, model_file))    
+        logfile_test.write('Test loss: {:.3f} using weights from file: {}'.format(test_loss, model_file))
+
+    return test_loss    
         
     
 

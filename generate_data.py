@@ -236,11 +236,11 @@ def generate_state_observation_pairs(type_, parameters, T=200, N_samples=1000):
 
     Z_XY_data = []
 
-    Z_XY["ssm_model"] = initialize_model(type_, parameters)
+    ssm_model = initialize_model(type_, parameters)
 
     for i in range(N_samples):
         
-        Xi, Yi = generate_SSM_data(Z_XY["ssm_model"], T, parameters)
+        Xi, Yi = generate_SSM_data(ssm_model, T, parameters)
         Z_XY_data_lengths.append(T)
         Z_XY_data.append([Xi, Yi])
 

@@ -6,6 +6,8 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 import argparse
 from parse import parse
 import numpy as np
+import json
+from utils.utils import NDArrayEncoder
 import scipy
 import matplotlib.pyplot as plt
 import torch
@@ -57,7 +59,7 @@ def main():
                                             inverse_r2_dB=inverse_r2_dB
                                         )
 
-    batch_size = ssm_parameters_dict[dataset_type]["batch_size"] # Set the batch size
+    batch_size = est_parameters_dict["danse"]["batch_size"] # Set the batch size
     estimator_options = est_parameters_dict["danse"] # Get the options for the estimator
 
     if not os.path.isfile(datafile):
@@ -149,12 +151,23 @@ def main():
     if flag_models_dir == False:
         print("Creating {}".format(os.path.join(modelfile_path, main_exp_name)))
         os.makedirs(os.path.join(modelfile_path, main_exp_name), exist_ok=True)
-
+    
     """
     if mode.lower() == "train":
         model_danse = DANSE(**est_parameters_dict[model_type])
         tr_verbose = True  
-        tr_losses, val_losses, best_val_loss, tr_loss_for_best_val_loss, model_danse_trained = train_danse()
+
+        # Starting model training
+        tr_losses, val_losses, best_val_loss, tr_loss_for_best_val_loss, model_danse_trained = train_danse(
+            model=model_danse,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            nepochs=est_parameters_dict[model_type]['rnn_params_dict']['num_epochs'],
+            logfile_path=tr_logfile_name_with_path,
+            save_chkpoints=False,
+            device=device,
+            tr_verbose=tr_verbose
+        )
         #if tr_verbose == True:
         #    plot_losses(tr_losses=tr_losses, val_losses=val_losses, logscale=False)
         
@@ -163,16 +176,20 @@ def main():
         losses_model["val_losses"] = val_losses
 
         with open(os.path.join(os.path.join(logfile_path, main_exp_name), 
-            '{}_losses_eps{}.json'.format(model_type, options[model_type]["num_epochs"])), 'w') as f:
+            'danse_{}_losses_eps{}.json'.format(est_parameters_dict[model_type]['rnn_type'], est_parameters_dict[model_type]['rnn_params_dict']["num_epochs"])), 'w') as f:
             f.write(json.dumps(losses_model, cls=NDArrayEncoder, indent=2))
 
     elif mode.lower() == "test":
 
         #model_file_saved = "./model_checkpoints/{}_usenorm_{}_ckpt_epoch_{}.pt".format(model_type, usenorm_flag, epoch_test)
-        test_danse(options[model_type], test_loader, device, model_file=model_file_saved, usenorm_flag=usenorm_flag, 
-                    test_logfile_path=te_logfile_name_with_path)
+        te_loss = test_danse(
+            test_loader=test_loader,
+            options=est_parameters_dict[model_type],
+            device=device,
+            model_file=model_file_saved,
+            test_logfile_path=te_logfile_name_with_path
+            )
     """
-
     return None
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ import torch
 
 torch.manual_seed(10)
 
-def get_parameters(N=1000, T=100, batch_size=128, n_states=5, n_obs=5, q=1.0, r=1.0, 
+def get_parameters(N=1000, T=100, n_states=5, n_obs=5, q=1.0, r=1.0, 
     inverse_r2_dB=40, nu_dB=0):
 
     H_DANSE = torch.randn(n_obs, n_states)
@@ -25,7 +25,6 @@ def get_parameters(N=1000, T=100, batch_size=128, n_states=5, n_obs=5, q=1.0, r=
             "r":r,
             "N":N,
             "T":T,
-            "batch_size":batch_size,
             "Q":None,
             "R":None
 
@@ -35,18 +34,17 @@ def get_parameters(N=1000, T=100, batch_size=128, n_states=5, n_obs=5, q=1.0, r=
             "n_states":n_states,
             "n_obs":n_obs,
             "J":5,
-            "delta":0.001,
+            "delta":0.01,
             "A_fn":lambda z: np.array([
                     [-10, 10, 0],
-                    [28, -1, -z[0]],
-                    [0, z[0], -8.0/3]
+                    [28, -1, -z],
+                    [0, z, -8.0/3]
                 ]),
             "h_fn":lambda x: x,
             "delta_d":0.02,
             "decimate":False,
             "inverse_r2_dB":inverse_r2_dB,
-            "nu_dB":-20,
-            "batch_size":batch_size
+            "nu_dB":-20
         },
     }
 
@@ -60,6 +58,7 @@ def get_parameters(N=1000, T=100, batch_size=128, n_states=5, n_obs=5, q=1.0, r=
             "H":H_DANSE,
             "mu_x0":torch.zeros(n_states,1),
             "C_x0":torch.zeros(n_states,n_states),
+            "batch_size":64,
             "rnn_type":"gru",
             "rnn_params_dict":{
                 "gru":{

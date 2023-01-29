@@ -219,13 +219,13 @@ def load_splits_file(splits_filename):
 def load_saved_dataset(filename):
 
     with open(filename, 'rb') as handle:
-        Z_pM = pkl.load(handle)
-    return Z_pM
+        Z_XY = pkl.load(handle)
+    return Z_XY
 
-def save_dataset(Z_pM, filename):
+def save_dataset(Z_XY, filename):
     # Saving the dataset
     with open(filename, 'wb') as handle:
-        pkl.dump(Z_pM, handle, protocol=pkl.HIGHEST_PROTOCOL)
+        pkl.dump(Z_XY, handle, protocol=pkl.HIGHEST_PROTOCOL)
 
 def check_if_dir_or_file_exists(file_path, file_name=None):
     flag_dir = os.path.exists(file_path)
