@@ -70,7 +70,7 @@ def compute_inverse(X):
     return Vh @ (torch.diag(1/S.reshape((-1,))) @ U.T) 
 
 def create_diag(x):
-    return torch.diag(x)
+    return torch.diag_embed(x)
 
 class Series_Dataset(Dataset):
 

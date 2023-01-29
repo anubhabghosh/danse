@@ -132,7 +132,8 @@ class LorenzAttractorModel(object):
 
         self.F = np.eye(self.d)
         for j in range(1, self.J+1):
-            self.F += np.linalg.matrix_power(self.A_fn(x)*self.delta, j) / np.math.factorial(j)
+            #self.F += np.linalg.matrix_power(self.A_fn(x)*self.delta, j) / np.math.factorial(j)
+            self.F += np.linalg.matrix_power(self.A_fn(x[0])*self.delta, j) / np.math.factorial(j)
 
         return self.F @ x
 

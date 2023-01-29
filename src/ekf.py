@@ -3,13 +3,14 @@
 #########################################################################
 import numpy as np
 import torch
+import math
 from torch import autograd, nn
-from ..utils.utils import dB_to_lin
+from utils.utils import dB_to_lin
 
 class EKF(nn.Module):
     """ This class implements an extended Kalman filter in PyTorch
     """
-    def __init__(self, n_states, n_obs, f=None, h=None, Q=None, R=None, inverse_r2_dB=None, nu_dB=None, device='cpu'):
+    def __init__(self, n_states, n_obs, J=5, delta=0.01, f=None, h=None, Q=None, R=None, inverse_r2_dB=None, nu_dB=None, device='cpu'):
         super(EKF, self).__init__()
 
         self.n_states = n_states
@@ -18,14 +19,16 @@ class EKF(nn.Module):
         # Initializing the system model
         self.n_states = n_states # Setting the number of states of the Kalman filter
         self.n_obs = n_obs
+        self.J = J # Linear approximation order (Taylor series expansion order J)
+        self.delta = delta # Step size for Taylor series expansion of order J
         self.f_k = f # State transition function (relates x_k, u_k to x_{k+1})
         self.h_k = h # Output function (relates state x_k to output y_k)
         
         if (not inverse_r2_dB is None) and (not nu_dB is None):
             r2 = 1.0 / dB_to_lin(inverse_r2_dB)
             q2 = dB_to_lin(nu_dB - inverse_r2_dB)
-            Q = q2 * torch.eye(self.n_states)
-            R = r2 * torch.eye(self.n_obs)
+            Q = q2 * np.eye(self.n_states)
+            R = r2 * np.eye(self.n_obs)
         
         self.Q_k = self.push_to_device(Q) # Covariance matrix of the process noise, we assume process noise w_k ~ N(0, Q)
         self.R_k = self.push_to_device(R) # Covariance matrix of the measurement noise, we assume mesaurement noise v_k ~ N(0, R)
@@ -46,6 +49,13 @@ class EKF(nn.Module):
         """
         return torch.from_numpy(x).type(torch.FloatTensor).to(self.device)
 
+    def f_linearize(self, x):
+        
+        F_lin = torch.eye(self.n_states)
+        for j in range(1, self.J+1):
+            F_lin += torch.matrix_power(self.f_k(x[0])*self.delta, j) / math.factorial(j)
+        return F_lin
+
     def predict_estimate(self, Pk_pos_prev, Q_k_prev, u_k=0.0):
         """ This function helps implement the prediction step / time-update step of the Kalman filter, i.e. using 
         available observations, and previous state estimates, what is the next state estimate?
@@ -63,17 +73,19 @@ class EKF(nn.Module):
         
         # Implemeting a Square-Root Filtering version for numerical stability
         # Trying QR decomposition to get Pk_neg from Pk_pos
-        F_k_prev = self.compute_jac_f_k(x_=self.x_hat_pos_k, inputs_=u_k).to(self.device)
-        self.Sk_pos_sqrt = torch.linalg.cholesky(Pk_pos_prev)
-        Qk_prev_sqrt = torch.linalg.cholesky(Q_k_prev)
+        #F_k_prev = self.compute_jac_f_k(x_=self.x_hat_pos_k[0]).to(self.device).squeeze(-1)
+        
+        F_k_prev = self.f_linearize(x=self.x_hat_pos_k).to(self.device)
+        self.Sk_pos_sqrt = torch.cholesky(Pk_pos_prev)
+        Qk_prev_sqrt = torch.cholesky(Q_k_prev)
         A_state = torch.cat((F_k_prev @ self.Sk_pos_sqrt, Qk_prev_sqrt), dim=1)
         assert A_state.shape[1] == 2*self.n_states, "A_state has a dimension problem"
-        _, Ra = torch.linalg.qr(A_state.T)
+        _, Ra = torch.qr(A_state.T)
         assert torch.allclose(Ra, torch.triu(Ra)), "Ra is not upper triangular" # check if upper triangular
         self.Sk_neg_sqrt = Ra.T[:,:self.n_states]
 
         # Time update equation
-        self.x_hat_neg_k = self.f_k(self.x_hat_pos_k, u_k) # Calculating the predicted state estimate using the previous filtered state estimate \hat{x}_{k-1 \vert k-1}^{+}
+        self.x_hat_neg_k = F_k_prev @ self.x_hat_pos_k # Calculating the predicted state estimate using the previous filtered state estimate \hat{x}_{k-1 \vert k-1}^{+}
         self.Pk_neg = self.Sk_neg_sqrt @ self.Sk_neg_sqrt.T # Calculating the predicted state estimate covariance 
 
         return self.x_hat_neg_k, self.Pk_neg
@@ -96,10 +108,10 @@ class EKF(nn.Module):
             [torch.zeros((self.n_states, self.H_k.shape[0])).numpy(), self.Sk_neg_sqrt.numpy()]
             ])).type(torch.FloatTensor)
         
-        Qa_measurement, Ra_measurement = torch.linalg.qr(A_measurement.T)
+        Qa_measurement, Ra_measurement = torch.qr(A_measurement.T)
         Re_k_sqrt = Ra_measurement.T[:self.H_k.shape[0],:self.H_k.shape[0]]
         K_k_Re_k_sqrt = Ra_measurement.T[self.H_k.shape[0]:,:self.H_k.shape[0]]
-        self.K_k = K_k_Re_k_sqrt @ torch.linalg.inv(Re_k_sqrt)
+        self.K_k = K_k_Re_k_sqrt @ torch.inverse(Re_k_sqrt)
         assert self.K_k.shape[0] == self.n_states, "Kalman gain has a dimension issue"
 
         self.Sk_pos_sqrt = Ra_measurement.T[self.H_k.shape[0]:,self.H_k.shape[0]:]
@@ -111,14 +123,14 @@ class EKF(nn.Module):
 
         return self.x_hat_pos_k, self.Pk_pos
 
-    def compute_jac_f_k(self, x_, inputs_):
+    def compute_jac_f_k(self, x_, inputs_=0.0):
         x_ = x_.reshape((-1,))
-        F_k = autograd.functional.jacobian(self.f_k, (x_, inputs_))
+        F_k = autograd.functional.jacobian(self.f_k, x_)
         return F_k
 
     def compute_jac_h_k(self, x_):
         x_ = x_.reshape((-1,))
-        H_k = autograd.functional.jacobian(self.h_k, (x_))
+        H_k = autograd.functional.jacobian(self.h_k, x_)
         return H_k
 
     def run_mb_filter(self, X, Y):

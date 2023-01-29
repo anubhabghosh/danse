@@ -5,6 +5,7 @@ from torch import nn, optim, distributions
 from timeit import default_timer as timer
 import sys
 import copy
+import math
 import os
 from utils.utils import compute_log_prob_normal, create_diag, compute_inverse, count_params, ConvergenceMonitor
 import torch.nn.functional as F
@@ -82,24 +83,33 @@ class RNN_model(nn.Module):
         batch_size = x.shape[0]
         
         # Obtain the RNN output
-        r_out, hn_all = self.rnn(x)
+        r_out, _ = self.rnn(x)
         
         # Reshaping the output appropriately
-        r_out = r_out.contiguous().view(batch_size, -1, self.num_directions, self.hidden_dim)
-        
-        # Select the last time-step
-        r_out = r_out[:, -1, :, :]
-        r_out_last_step = r_out.reshape((-1, self.hidden_dim))
-        
-        # Pass this through dropout layer
-        #r_out_last_step = self.d1(r_out_last_step)
+        r_out_all_steps = r_out.contiguous().view(batch_size, -1, self.num_directions * self.hidden_dim)
 
-        # Passing the output to the fully connected layer
-        y = F.relu(self.fc(r_out_last_step))
+        # Passing the output to one fully connected layer
+        y = F.relu(self.fc(r_out_all_steps))
 
-        # Means and variances are computed       
-        mu = self.fc_mean(y)
-        vars = F.relu(self.fc_vars(y))
+        # Means and variances are computed for time instants t=2, ..., T+1 using the available sequence
+        mu_2T_1 = self.fc_mean(y) # A second linear projection to get the means
+        vars_2T_1 = F.softplus(self.fc_vars(y)) # A second linear projection followed by an activation function to get variances
+
+        # The mean and variances at the first time step need to be computed only based on the previous hidden state
+        mu_1 = self.fc_mean(F.relu(self.fc(self.init_h0(batch_size)[-1,:,:]))).view(batch_size, 1, -1)
+        var_1 = F.softplus(self.fc_vars(F.relu(self.fc(self.init_h0(batch_size)[-1,:,:]))).view(batch_size, 1, -1))
+
+        # To get the means and variances for the time instants t=1, ..., T, we take the previous result and concatenate 
+        # all but last value to the value found at t=1. Concatenation is done along the sequence dimension
+        mu = torch.cat(
+            (mu_1, mu_2T_1[:,:-1,:]),
+            dim=1
+        )
+
+        vars = torch.cat(
+            (var_1, vars_2T_1[:,:-1,:]),
+            dim=1
+        )
 
         return mu, vars
 
@@ -158,16 +168,21 @@ class DANSE(nn.Module):
 
     def compute_marginal_mean_vars(self):
 
-        self.mu_t_current = self.H @ self.mu_xt_yt_prev.reshape((-1, 1)) + self.mu_w
+        self.mu_yt_current = torch.einsum('ij,ntj->nti',self.H, self.mu_xt_yt_prev) + self.mu_w
         self.L_yt_current = self.H @ self.L_xt_yt_prev @ self.H.T + self.C_w
     
-    def compute_posterior_mean_vars(self, yt):
+    def compute_posterior_mean_vars(self, Yi_batch):
 
-        Re_t = compute_inverse(self.H @ self.L_xt_yt_prev @ self.H.T + self.C_w)
-        self.K_t = (self.L_xt_yt_prev @ (self.H.T @ Re_t))
-        self.mu_xt_yt_current = self.mu_xt_yt_prev + self.K_t @ (yt - self.H @ self.mu_xt_yt_prev)
-        self.L_xt_yt_current = self.L_xt_yt_prev - ((self.L_xt_yt_prev @ self.H.T) @ Re_t) @ (self.H @ self.L_xt_yt_prev.T)
-
+        #TODO: needs fixing as per batch wise operations are concerned!
+        Re_t_inv = torch.inverse(self.H @ self.L_xt_yt_prev @ self.H.T + self.C_w)
+        self.K_t = (self.L_xt_yt_prev @ (self.H.T @ Re_t_inv))
+        self.mu_xt_yt_current = self.mu_xt_yt_prev + torch.einsum('ntij,ntj->nti',self.K_t,(Yi_batch - torch.einsum('ij,ntj->nti',self.H,self.mu_xt_yt_prev)))
+        self.L_xt_yt_current = self.L_xt_yt_prev - self.K_t @ (self.H @ self.L_xt_yt_prev @ self.H.T + self.C_w) @ self.K_t.T
+        self.L_xt_yt_current = self.L_xt_yt_prev - torch.einsum('ntij,ntkl->ntik',
+        torch.einsum('ntij,ntjk->ntik',
+        self.K_t, self.H @ self.L_xt_yt_prev @ self.H.T + self.C_w), 
+        self.K_t)
+    '''
     def compute_logprob_batch(self, Yi_batch):
 
         N, T, _ = Yi_batch.shape
@@ -189,6 +204,27 @@ class DANSE(nn.Module):
                 ).mean(0)
 
         return log_py_t_given_prev
+    '''
+    def compute_logpdf_Gaussian(self, Y):
+        
+        _, T, _ = T.shape 
+        logprob = 0.5 * self.n_obs * T * math.log(math.pi*2) - 0.5 * torch.logdet(self.L_yt_current).sum(1) \
+            - 0.5 * torch.einsum('nti,nti->nt',
+            (Y - self.mu_yt_current), 
+            torch.einsum('ntij,ntj->nti',torch.inverse(self.L_yt_current), (Y - self.mu_yt_current))).sum(1)
+
+        return logprob
+
+    def compute_logprob_batch_full(self, Yi_batch):
+
+        mu_batch, vars_batch = self.rnn.forward(x=Yi_batch)
+        self.compute_prior_mean_vars(mu_xt_yt_prev=mu_batch, L_xt_yt_prev=vars_batch)
+        self.compute_marginal_mean_vars()
+        logprob_batch = self.compute_logpdf_Gaussian(Y=Yi_batch)
+        log_pYT_batch_avg = logprob_batch.mean(0)
+
+        return log_pYT_batch_avg
+
 
 def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path, modelfile_path, save_chkpoints, device='cpu', tr_verbose=False):
 
