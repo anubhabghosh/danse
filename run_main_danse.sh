@@ -2,6 +2,6 @@
 python3.8 main_danse.py \
 --mode train \
 --rnn_model_type gru \
---dataset_type LorenzSSM \
---datafile ./data/synthetic_data/trajectories_m_3_n_3_LorenzSSM_data_T_6000_N_200_r2_40.0dB.pkl \
+--dataset_type LinearSSM \
+--datafile ./data/synthetic_data/trajectories_m_10_n_10_LinearSSM_data_T_6000_N_200_r2_40.0dB.pkl \
 --splits ./data/synthetic_data/splits.pkl

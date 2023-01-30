@@ -366,11 +366,11 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
             # Displaying loss at an interval of 200 epochs
             if tr_verbose == True and (((epoch + 1) % 5) == 0 or epoch == 0):
                 
-                print("Epoch: {}/{}, Training MSE Loss:{:.9f}, Val. MSE Loss:{:.9f} ".format(epoch+1, 
+                print("Epoch: {}/{}, Training NLL:{:.9f}, Val. NLL:{:.9f} ".format(epoch+1, 
                 model.rnn.num_epochs, tr_loss, val_loss), file=orig_stdout)
                 #save_model(model, model_filepath + "/" + "{}_ckpt_epoch_{}.pt".format(model.model_type, epoch+1))
 
-                print("Epoch: {}/{}, Training MSE Loss:{:.9f}, Val. MSE Loss:{:.9f}, Time_Elapsed:{:.4f} secs".format(epoch+1, 
+                print("Epoch: {}/{}, Training NLL:{:.9f}, Val. NLL:{:.9f}, Time_Elapsed:{:.4f} secs".format(epoch+1, 
                 model.rnn.num_epochs, tr_loss, val_loss, time_elapsed))
             
             # Checkpointing the model every few  epochs
