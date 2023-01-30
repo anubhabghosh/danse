@@ -8,7 +8,7 @@ import copy
 import math
 import os
 from utils.utils import compute_log_prob_normal, create_diag, compute_inverse, count_params, ConvergenceMonitor
-from utils.plot_functions import plot_state_trajectory, plot_state_trajectory_axes
+#from utils.plot_functions import plot_state_trajectory, plot_state_trajectory_axes
 import torch.nn.functional as F
 
 # Create an RNN model for prediction
@@ -16,7 +16,7 @@ class RNN_model(nn.Module):
     """ This super class defines the specific model to be used i.e. LSTM or GRU or RNN
     """
     def __init__(self, input_size, output_size, n_hidden, n_layers, 
-        model_type, lr, num_epochs, n_hidden_dense=32, num_directions=1, batch_first = True, min_delta=1e-2):
+        model_type, lr, num_epochs, n_hidden_dense=32, num_directions=1, batch_first = True, min_delta=1e-2, device='cpu'):
         super(RNN_model, self).__init__()
         """
         Args:
@@ -40,6 +40,7 @@ class RNN_model(nn.Module):
         self.model_type = model_type
         self.lr = lr
         self.num_epochs = num_epochs
+        self.device=device
         
         # Predefined:
         ## Use only the forward direction 
@@ -65,9 +66,9 @@ class RNN_model(nn.Module):
         # Fully connected layer to be used for mapping the output
         #self.fc = nn.Linear(self.hidden_dim * self.num_directions, self.output_size)
         
-        self.fc = nn.Linear(self.hidden_dim * self.num_directions, n_hidden_dense)
-        self.fc_mean = nn.Linear(n_hidden_dense, self.output_size)
-        self.fc_vars = nn.Linear(n_hidden_dense, self.output_size)
+        self.fc = nn.Linear(self.hidden_dim * self.num_directions, n_hidden_dense).to(self.device)
+        self.fc_mean = nn.Linear(n_hidden_dense, self.output_size).to(self.device)
+        self.fc_vars = nn.Linear(n_hidden_dense, self.output_size).to(self.device)
         # Add a dropout layer with 20% probability
         #self.d1 = nn.Dropout(p=0.2)
 
@@ -75,7 +76,7 @@ class RNN_model(nn.Module):
         """ This function defines the initial hidden state of the RNN
         """
         # This method generates the first hidden state of zeros (h0) which is used in the forward pass
-        h0 = torch.randn(self.num_layers, batch_size, self.hidden_dim)
+        h0 = torch.randn(self.num_layers, batch_size, self.hidden_dim, device=self.device)
         return h0
     
     def forward(self, x):
@@ -150,7 +151,7 @@ class DANSE(nn.Module):
         self.rnn_type = rnn_type
 
         # Initialize the parameters of the RNN
-        self.rnn = RNN_model(**rnn_params_dict[self.rnn_type])
+        self.rnn = RNN_model(**rnn_params_dict[self.rnn_type]).to(self.device)
 
         # Initialize various means and variances of the estimator
 
@@ -178,19 +179,20 @@ class DANSE(nn.Module):
         return self.mu_xt_yt_prev, self.L_xt_yt_prev
 
     def compute_marginal_mean_vars(self, mu_xt_yt_prev, L_xt_yt_prev):
-
+        
+        #print(self.H.device, self.mu_xt_yt_prev.device, self.mu_w.device)
         self.mu_yt_current = torch.einsum('ij,ntj->nti',self.H, mu_xt_yt_prev) + self.mu_w.squeeze(-1)
-        self.L_yt_current = self.H @ L_xt_yt_prev @ self.H.T + self.C_w
+        self.L_yt_current = self.H @ L_xt_yt_prev @ torch.transpose(self.H, 0, 1) + self.C_w
     
     def compute_posterior_mean_vars(self, Yi_batch):
 
-        Re_t_inv = torch.inverse(self.H @ self.L_xt_yt_prev @ self.H.T + self.C_w)
+        Re_t_inv = torch.inverse(self.H @ self.L_xt_yt_prev @ torch.transpose(self.H, 0, 1) + self.C_w)
         self.K_t = (self.L_xt_yt_prev @ (self.H.T @ Re_t_inv))
         self.mu_xt_yt_current = self.mu_xt_yt_prev + torch.einsum('ntij,ntj->nti',self.K_t,(Yi_batch - torch.einsum('ij,ntj->nti',self.H,self.mu_xt_yt_prev)))
-        self.L_xt_yt_current = self.L_xt_yt_prev - self.K_t @ (self.H @ self.L_xt_yt_prev @ self.H.T + self.C_w) @ self.K_t.T
+        self.L_xt_yt_current = self.L_xt_yt_prev - self.K_t @ (self.H @ self.L_xt_yt_prev @ torch.transpose(self.H, 0, 1) + self.C_w) @ self.K_t.T
         self.L_xt_yt_current = self.L_xt_yt_prev - torch.einsum('ntij,ntkl->ntik',
         torch.einsum('ntij,ntjk->ntik',
-        self.K_t, self.H @ self.L_xt_yt_prev @ self.H.T + self.C_w), 
+        self.K_t, self.H @ self.L_xt_yt_prev @ torch.transpose(self.H, 0, 1) + self.C_w), 
         self.K_t)
 
         return self.mu_xt_yt_current, self.L_xt_yt_current
@@ -516,8 +518,8 @@ def test_danse(test_loader, options, device, model_file=None, test_logfile_path 
         logfile_test.write('Test NLL loss: {:.3f}, Test MSE loss: {:.3f} using weights from file: {}'.format(test_NLL_loss, test_mse_loss, model_file))
 
     # Plot one of the predictions
-    plot_state_trajectory(X=X_ref, X_est=X_hat_ref)
-    plot_state_trajectory_axes(X=X_ref, X_est=X_hat_ref)
+    #plot_state_trajectory(X=X_ref, X_est=X_hat_ref)
+    #plot_state_trajectory_axes(X=X_ref, X_est=X_hat_ref)
 
     return test_mse_loss   
 

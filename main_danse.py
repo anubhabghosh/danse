@@ -9,7 +9,7 @@ import numpy as np
 import json
 from utils.utils import NDArrayEncoder
 import scipy
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import torch
 import pickle as pkl
 from torch import nn
@@ -18,7 +18,7 @@ from utils.utils import load_saved_dataset, Series_Dataset, obtain_tr_val_test_i
     create_file_paths, check_if_dir_or_file_exists, load_splits_file, get_dataloaders, NDArrayEncoder
 # Import the parameters
 from parameters import get_parameters
-from utils.plot_functions import plot_measurement_data, plot_measurement_data_axes, plot_state_trajectory, plot_state_trajectory_axes
+#from utils.plot_functions import plot_measurement_data, plot_measurement_data_axes, plot_state_trajectory, plot_state_trajectory_axes
 
 # Import estimator model and functions
 from src.danse import DANSE, train_danse, test_danse
@@ -49,14 +49,20 @@ def main():
 
     print(datafile.split('/')[-1])
     # Dataset parameters obtained from the 'datafile' variable
-    _, n_states, n_obs, _, T, N_samples, inverse_r2_dB = parse("{}_m_{:d}_n_{:d}_{}_data_T_{:d}_N_{:d}_r2_{:f}dB.pkl", datafile.split('/')[-1])
+    _, n_states, n_obs, _, T, N_samples, inverse_r2_dB, nu_dB = parse("{}_m_{:d}_n_{:d}_{}_data_T_{:d}_N_{:d}_r2_{:f}dB_nu_{:f}dB.pkl", datafile.split('/')[-1])
     
+    ngpu = 1 # Comment this out if you want to run on cpu and the next line just set device to "cpu"
+    device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu>0) else "cpu")
+    print("Device Used:{}".format(device))
+
     ssm_parameters_dict, est_parameters_dict = get_parameters(
                                             N=N_samples,
                                             T=T,
                                             n_states=n_states,
                                             n_obs=n_obs,
-                                            inverse_r2_dB=inverse_r2_dB
+                                            inverse_r2_dB=inverse_r2_dB,
+                                            nu_dB=nu_dB,
+                                            device=device
                                         )
 
     batch_size = est_parameters_dict["danse"]["batch_size"] # Set the batch size
@@ -100,9 +106,9 @@ def main():
                                                                                 len(val_loader), 
                                                                                 len(test_loader)))
 
-    ngpu = 1 # Comment this out if you want to run on cpu and the next line just set device to "cpu"
-    device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu>0) else "cpu")
-    print("Device Used:{}".format(device))
+    #ngpu = 1 # Comment this out if you want to run on cpu and the next line just set device to "cpu"
+    #device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu>0) else "cpu")
+    #print("Device Used:{}".format(device))
     
     logfile_path = "./log/".format(dataset_type)
     modelfile_path = "./models/".format(dataset_type)

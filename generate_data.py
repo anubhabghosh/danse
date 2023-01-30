@@ -37,7 +37,9 @@ def initialize_model(type_, parameters):
             A_fn=parameters["A_fn"],
             h_fn=parameters["h_fn"],
             delta_d=parameters["delta_d"],
-            decimate=parameters["decimate"]
+            decimate=parameters["decimate"],
+            mu_e=parameters["mu_e"],
+            mu_w=parameters["mu_w"]
                     )
          
     return model
@@ -59,8 +61,8 @@ def generate_SSM_data(model, T, parameters):
 
     elif type_ == "LorenzSSM":
 
-        X_arr = np.zeros((T, model.d))
-        Y_arr = np.zeros((T, model.d))
+        X_arr = np.zeros((T, model.n_states))
+        Y_arr = np.zeros((T, model.n_obs))
 
         X_arr, Y_arr = model.generate_single_sequence(T=T,
                                 inverse_r2_dB=parameters["inverse_r2_dB"],

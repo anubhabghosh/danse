@@ -17,7 +17,7 @@ def h_fn(z):
     return z
 
 def get_parameters(N=1000, T=100, n_states=5, n_obs=5, q=1.0, r=1.0, 
-    inverse_r2_dB=40, nu_dB=0):
+    inverse_r2_dB=40, nu_dB=0, device='cpu'):
 
     #H_DANSE = np.eye(n_obs, n_states) # Lorenz attractor model
     H_DANSE = LinearSSM(n_states=n_states, n_obs=n_obs).construct_H() # Linear SSM
@@ -58,7 +58,7 @@ def get_parameters(N=1000, T=100, n_states=5, n_obs=5, q=1.0, r=1.0,
             "mu_e":np.zeros((n_states,)),
             "mu_w":np.zeros((n_obs,)),
             "inverse_r2_dB":inverse_r2_dB,
-            "nu_dB":-20
+            "nu_dB":nu_dB
         },
     }
 
@@ -68,13 +68,14 @@ def get_parameters(N=1000, T=100, n_states=5, n_obs=5, q=1.0, r=1.0,
         "danse":{
             "n_states":n_states,
             "n_obs":n_obs,
-            "mu_w":np.zeros((n_obs,1)),
+            "mu_w":np.zeros((n_obs,)),
             "C_w":np.eye(n_obs,n_obs)*r2,
             "H":H_DANSE,
-            "mu_x0":np.zeros((n_states,1)),
+            "mu_x0":np.zeros((n_states,)),
             "C_x0":np.eye(n_states,n_states),
             "batch_size":64,
             "rnn_type":"gru",
+            "device":device,
             "rnn_params_dict":{
                 "gru":{
                     "model_type":"gru",
@@ -84,7 +85,8 @@ def get_parameters(N=1000, T=100, n_states=5, n_obs=5, q=1.0, r=1.0,
                     "n_layers":2,
                     "lr":1e-3,
                     "num_epochs":200,
-                    "min_delta":1e-3
+                    "min_delta":1e-3,
+                    "device":device
                 },
                 "rnn":{
                     "model_type":"gru",
@@ -94,7 +96,8 @@ def get_parameters(N=1000, T=100, n_states=5, n_obs=5, q=1.0, r=1.0,
                     "n_layers":2,
                     "lr":1e-3,
                     "num_epochs":200,
-                    "min_delta":1e-3
+                    "min_delta":1e-3,
+                    "device":device
                 },
                 "lstm":{
                     "model_type":"lstm",
@@ -104,7 +107,8 @@ def get_parameters(N=1000, T=100, n_states=5, n_obs=5, q=1.0, r=1.0,
                     "n_layers":2,
                     "lr":1e-3,
                     "num_epochs":200,
-                    "min_delta":1e-3
+                    "min_delta":1e-3,
+                    "device":device
                 }
             }
         },
