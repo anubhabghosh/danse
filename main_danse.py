@@ -32,7 +32,7 @@ def main():
     parser = argparse.ArgumentParser(description="Input a string indicating the mode of the script \n"\
         "train - training and testing is done, test-only evlaution is carried out")
     parser.add_argument("--mode", help="Enter the desired mode", type=str)
-    parser.add_argument("--model_type", help="Enter the desired model (rnn/lstm/gru)", type=str)
+    parser.add_argument("--rnn_model_type", help="Enter the desired model (rnn/lstm/gru)", type=str)
     parser.add_argument("--dataset_type", help="Enter the type of dataset (pfixed/vars/all)", type=str)
     parser.add_argument("--model_file_saved", help="In case of testing mode, Enter the desired model checkpoint with full path (gru/lstm/rnn)", type=str, default=None)
     parser.add_argument("--datafile", help="Enter the full path to the dataset", type=str)
@@ -40,7 +40,7 @@ def main():
     
     args = parser.parse_args() 
     mode = args.mode
-    model_type = args.model_type
+    model_type = args.rnn_model_type
     datafile = args.datafile
     dataset_type = args.dataset_type
     datafolder = "".join(datafile.split("/")[i]+"/" for i in range(len(datafile.split("/")) - 1))
