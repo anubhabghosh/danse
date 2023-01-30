@@ -98,10 +98,10 @@ def generate_state_observation_pairs(type_, parameters, T=200, N_samples=1000):
 
     return Z_XY
 
-def create_filename(T=100, N_samples=200, m=5, n=5, dataset_basepath="./data/", type_="LinearSSM", inverse_r2_dB=40):
+def create_filename(T=100, N_samples=200, m=5, n=5, dataset_basepath="./data/", type_="LinearSSM", inverse_r2_dB=40, nu_dB=0):
     # Create the dataset based on the dataset parameters
     
-    datafile = "trajectories_m_{}_n_{}_{}_data_T_{}_N_{}_r2_{}dB.pkl".format(m, n, type_, int(T), int(N_samples), inverse_r2_dB)
+    datafile = "trajectories_m_{}_n_{}_{}_data_T_{}_N_{}_r2_{}dB_nu_{}dB.pkl".format(m, n, type_, int(T), int(N_samples), inverse_r2_dB, nu_dB)
     dataset_fullpath = os.path.join(dataset_basepath, datafile)
     return dataset_fullpath
 
@@ -131,6 +131,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_samples", help="denotes the number of trajectories to be simulated for each realization", type=int, default=500)
     parser.add_argument("--sequence_length", help="denotes the length of each trajectory", type=int, default=200)
     parser.add_argument("--inverse_r2_dB", help="denotes the inverse of measurement noise power", type=float, default=40.0)
+    parser.add_argument("--nu_dB", help="denotes the ration between process and measurement noise", type=float, default=0.0)
     parser.add_argument("--dataset_type", help="specify mode=pfixed (all theta, except theta_3, theta_4) / vars (variances) / all (full theta vector)", type=str, default=None)
     parser.add_argument("--output_path", help="Enter full path to store the data file", type=str, default=None)
     
@@ -143,10 +144,11 @@ if __name__ == "__main__":
     type_ = args.dataset_type
     output_path = args.output_path
     inverse_r2_dB = args.inverse_r2_dB
+    nu_dB = args.nu_dB
 
     # Create the full path for the datafile
-    datafilename = create_filename(T=T, N_samples=N_samples, m=n_states, n=n_obs, dataset_basepath=output_path, type_=type_, inverse_r2_dB=inverse_r2_dB)
-    ssm_parameters, _ = get_parameters(N=N_samples, T=T, n_states=n_states, n_obs=n_obs, inverse_r2_dB=inverse_r2_dB)
+    datafilename = create_filename(T=T, N_samples=N_samples, m=n_states, n=n_obs, dataset_basepath=output_path, type_=type_, inverse_r2_dB=inverse_r2_dB, nu_dB=nu_dB)
+    ssm_parameters, _ = get_parameters(N=N_samples, T=T, n_states=n_states, n_obs=n_obs, inverse_r2_dB=inverse_r2_dB, nu_dB=nu_dB)
 
     # If the dataset hasn't been already created, create the dataset
     if not os.path.isfile(datafilename):
