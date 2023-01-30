@@ -179,7 +179,6 @@ class DANSE(nn.Module):
         return self.mu_xt_yt_prev, self.L_xt_yt_prev
 
     def compute_marginal_mean_vars(self, mu_xt_yt_prev, L_xt_yt_prev):
-        
         #print(self.H.device, self.mu_xt_yt_prev.device, self.mu_w.device)
         self.mu_yt_current = torch.einsum('ij,ntj->nti',self.H, mu_xt_yt_prev) + self.mu_w.squeeze(-1)
         self.L_yt_current = self.H @ L_xt_yt_prev @ torch.transpose(self.H, 0, 1) + self.C_w
