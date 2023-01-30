@@ -144,7 +144,7 @@ def get_dataloaders(dataset, batch_size, tr_indices, val_indices, test_indices=N
 
 def create_splits_file_name(dataset_filename, splits_filename):
     
-    idx_dset_info = dataset_filename.rfind("M")
+    idx_dset_info = dataset_filename.rfind("m")
     idx_splitfilename = splits_filename.rfind(".pkl")
     splits_filename_modified = splits_filename[:idx_splitfilename] + "_" + dataset_filename[idx_dset_info:] 
     return splits_filename_modified

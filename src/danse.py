@@ -8,6 +8,7 @@ import copy
 import math
 import os
 from utils.utils import compute_log_prob_normal, create_diag, compute_inverse, count_params, ConvergenceMonitor
+from utils.plot_functions import plot_state_trajectory, plot_state_trajectory_axes
 import torch.nn.functional as F
 
 # Create an RNN model for prediction
@@ -183,7 +184,6 @@ class DANSE(nn.Module):
     
     def compute_posterior_mean_vars(self, Yi_batch):
 
-        #TODO: needs fixing as per batch wise operations are concerned!
         Re_t_inv = torch.inverse(self.H @ self.L_xt_yt_prev @ self.H.T + self.C_w)
         self.K_t = (self.L_xt_yt_prev @ (self.H.T @ Re_t_inv))
         self.mu_xt_yt_current = self.mu_xt_yt_prev + torch.einsum('ntij,ntj->nti',self.K_t,(Yi_batch - torch.einsum('ij,ntj->nti',self.H,self.mu_xt_yt_prev)))
@@ -192,6 +192,8 @@ class DANSE(nn.Module):
         torch.einsum('ntij,ntjk->ntik',
         self.K_t, self.H @ self.L_xt_yt_prev @ self.H.T + self.C_w), 
         self.K_t)
+
+        return self.mu_xt_yt_current, self.L_xt_yt_current
     '''
     def compute_logprob_batch(self, Yi_batch):
 
@@ -232,14 +234,15 @@ class DANSE(nn.Module):
             mu_xt_yt_prev=mu_x_given_Y_test_batch,
             L_xt_yt_prev=vars_x_given_Y_test_batch
             )
-        return mu_xt_yt_prev_test, L_xt_yt_prev_test
+        mu_xt_yt_current_test, L_xt_yt_current_test = self.compute_posterior_mean_vars(Yi_batch=Y_test_batch)
+        return mu_xt_yt_prev_test, L_xt_yt_prev_test, mu_xt_yt_current_test, L_xt_yt_current_test
 
     def forward(self, Yi_batch):
 
         mu_batch, vars_batch = self.rnn.forward(x=Yi_batch)
         mu_xt_yt_prev, L_xt_yt_prev = self.compute_prior_mean_vars(mu_xt_yt_prev=mu_batch, L_xt_yt_prev=vars_batch)
         self.compute_marginal_mean_vars(mu_xt_yt_prev=mu_xt_yt_prev, L_xt_yt_prev=L_xt_yt_prev)
-        logprob_batch = self.compute_logpdf_Gaussian(Y=Yi_batch) / Yi_batch.shape[1] # Per dim of sequence length
+        logprob_batch = self.compute_logpdf_Gaussian(Y=Yi_batch) / (Yi_batch.shape[1] * Yi_batch.shape[2]) # Per dim. and per sequence length
         log_pYT_batch_avg = logprob_batch.mean(0)
 
         return log_pYT_batch_avg
@@ -444,7 +447,7 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
                 model_filename = "danse_{}_ckpt_epoch_{}_best.pt".format(model.rnn_type, best_val_epoch)
                 torch.save(best_model_wts, model_filepath + "/" + model_filename)
             else:
-                model_filename = "danse_usenorm_{}_ckpt_epoch_{}_best.pt".format(model.rnn_type, epoch+1)
+                model_filename = "danse_{}_ckpt_epoch_{}_best.pt".format(model.rnn_type, epoch+1)
                 print("Saving last model as best...")
                 save_model(model, model_filepath + "/" + model_filename)
         #elif save_chkpoints == False:
@@ -485,18 +488,24 @@ def test_danse(test_loader, options, device, model_file=None, test_logfile_path 
     else:
         test_log = test_logfile_path
 
+    X_ref = None
+    X_hat_ref = None
+
     with torch.no_grad():
         
         for i, data in enumerate(test_loader, 0):
                 
             te_Y_batch, te_X_batch = data
             Y_test_batch = Variable(te_Y_batch, requires_grad=False).type(torch.FloatTensor).to(device)
-            te_X_predictions_batch = model.compute_predictions(Y_test_batch)
+            te_mu_X_predictions_batch, te_var_X_predictions_batch, te_mu_X_filtered_batch, te_var_X_filtered_batch = model.compute_predictions(Y_test_batch)
             log_pY_test_batch = -model.forward(Y_test_batch)
-            test_mse_loss_batch = criterion(te_X_batch, te_X_predictions_batch)
+            test_mse_loss_batch = criterion(te_X_batch, te_mu_X_filtered_batch)
             # print statistics
             test_loss_epoch_sum += test_mse_loss_batch.item()
             te_log_pY_epoch_sum += log_pY_test_batch.item()
+
+        X_ref = te_X_batch[-1]
+        X_hat_ref = te_mu_X_filtered_batch[-1]
 
     test_mse_loss = test_loss_epoch_sum / len(test_loader)
     test_NLL_loss = te_log_pY_epoch_sum / len(test_loader)
@@ -505,6 +514,10 @@ def test_danse(test_loader, options, device, model_file=None, test_logfile_path 
 
     with open(test_log, "a") as logfile_test:
         logfile_test.write('Test NLL loss: {:.3f}, Test MSE loss: {:.3f} using weights from file: {}'.format(test_NLL_loss, test_mse_loss, model_file))
+
+    # Plot one of the predictions
+    plot_state_trajectory(X=X_ref, X_est=X_hat_ref)
+    plot_state_trajectory_axes(X=X_ref, X_est=X_hat_ref)
 
     return test_mse_loss   
         
