@@ -78,8 +78,8 @@ class LinearSSM(object):
         #NOTE: Since theta_5 and theta_6 are modeling variances in this code, 
         # for direct comparison with the MATLAB code, the std param input should be
         # a square root version
-        e_k_arr = generate_normal(N=T, mean=np.zeros((self.n_states,)), Sigma=self.Q)
-        w_k_arr = generate_normal(N=T, mean=np.zeros((self.n_obs,)), Sigma=self.R)
+        e_k_arr = generate_normal(N=T, mean=self.mu_e, Sigma2=self.Q)
+        w_k_arr = generate_normal(N=T, mean=self.mu_w, Sigma2=self.R)
         
         # Generate the sequence iteratively
         for k in range(T):
@@ -105,40 +105,53 @@ class LinearSSM(object):
 
 class LorenzAttractorModel(object):
 
-    def __init__(self, d, J, delta, delta_d, A_fn, h_fn, decimate=False) -> None:
+    def __init__(self, d, J, delta, delta_d, A_fn, h_fn, decimate=False, mu_e=None, mu_w=None) -> None:
         
-        self.d = d
+        self.n_states = d
         self.J = J
         self.delta = delta
         self.delta_d = delta_d
         self.A_fn = A_fn
         self.h_fn = h_fn
+        self.n_obs = self.h_fn(np.random.randn(d,1)).shape[0]
         self.decimate = decimate
+        self.mu_e = mu_e
+        self.mu_w = mu_w
 
     def h_fn(self, x):
         return x
 
     def f_linearize(self, x):
 
-        self.F = np.eye(self.d)
+        self.F = np.eye(self.n_states)
         for j in range(1, self.J+1):
             #self.F += np.linalg.matrix_power(self.A_fn(x)*self.delta, j) / np.math.factorial(j)
             self.F += np.linalg.matrix_power(self.A_fn(x[0])*self.delta, j) / np.math.factorial(j)
 
         return self.F @ x
 
+    def init_noise_covs(self):
+
+        self.Q = self.q**2 * np.eye(self.n_states)
+        self.R = self.r**2 * np.eye(self.n_obs)
+        return None
+
     def generate_single_sequence(self, T, inverse_r2_dB, nu_dB):
     
-        x = np.zeros((T+1, self.d))
-        y = np.zeros((T, self.d))
+        x = np.zeros((T+1, self.n_states))
+        y = np.zeros((T, self.n_obs))
         
         r2 = 1.0 / dB_to_lin(inverse_r2_dB)
         q2 = dB_to_lin(nu_dB - inverse_r2_dB)
         
+        self.r = r2
+        self.q = q2
+        
+        self.init_noise_covs()
         #print("Measurement variance: {}, Process variance: {}".format(r2, q2))
         
-        e = np.random.multivariate_normal(np.zeros(self.d,), q2*np.eye(self.d),size=(T+1,))
-        v = np.random.multivariate_normal(np.zeros(self.d,), r2*np.eye(self.d),size=(T,))
+        e = np.random.multivariate_normal(self.mu_e, self.Q, size=(T+1,))
+        v = np.random.multivariate_normal(self.mu_w, self.R, size=(T,))
         
         for t in range(0,T):
             
@@ -148,7 +161,7 @@ class LorenzAttractorModel(object):
         if self.decimate == True:
             K = self.delta_d // self.delta
             x_lorenz_d = x[0:T:K,:]
-            y_lorenz_d = self.h_fn(x_lorenz_d) + np.random.multivariate_normal(np.zeros(self.d,), r2*np.eye(self.d),size=(len(x_lorenz_d),))
+            y_lorenz_d = self.h_fn(x_lorenz_d) + np.random.multivariate_normal(self.mu_e, self.R, size=(len(x_lorenz_d),))
         else:
             x_lorenz_d = x
             y_lorenz_d = y

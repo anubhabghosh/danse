@@ -15,10 +15,10 @@ def lin_to_dB(x):
     assert x != 0, "X is zero"
     return 10*np.log10(x)
 
-def generate_normal(N, mean, Sigma):
+def generate_normal(N, mean, Sigma2):
 
     # n = N(mean, std**2)
-    n = np.random.multivariate_normal(mean=mean, cov=Sigma, size=(N,))
+    n = np.random.multivariate_normal(mean=mean, cov=Sigma2, size=(N,))
     return n
     
 def count_params(model):

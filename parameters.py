@@ -6,6 +6,16 @@ from ssm_models import LinearSSM
 
 torch.manual_seed(10)
 
+def A_fn(z):
+    return np.array([
+                    [-10, 10, 0],
+                    [28, -1, -z],
+                    [0, z, -8.0/3]
+                ])
+
+def h_fn(z):
+    return z
+
 def get_parameters(N=1000, T=100, n_states=5, n_obs=5, q=1.0, r=1.0, 
     inverse_r2_dB=40, nu_dB=0):
 
@@ -23,8 +33,8 @@ def get_parameters(N=1000, T=100, n_states=5, n_obs=5, q=1.0, r=1.0,
             "F":None,
             "G":np.zeros((n_states,1)),
             "H":None,
-            "mu_e":np.zeros((n_states,1)),
-            "mu_w":np.zeros((n_obs,1)),
+            "mu_e":np.zeros((n_states,)),
+            "mu_w":np.zeros((n_obs,)),
             "inverse_r2_dB":inverse_r2_dB,
             "nu_dB":nu_dB,
             "q":q,
@@ -41,14 +51,12 @@ def get_parameters(N=1000, T=100, n_states=5, n_obs=5, q=1.0, r=1.0,
             "n_obs":n_obs,
             "J":20,
             "delta":0.01,
-            "A_fn":lambda z: np.array([
-                    [-10, 10, 0],
-                    [28, -1, -z],
-                    [0, z, -8.0/3]
-                ]),
-            "h_fn":lambda x: x,
+            "A_fn":A_fn,
+            "h_fn":h_fn,
             "delta_d":0.02,
             "decimate":False,
+            "mu_e":np.zeros((n_states,)),
+            "mu_w":np.zeros((n_obs,)),
             "inverse_r2_dB":inverse_r2_dB,
             "nu_dB":-20
         },
@@ -64,7 +72,7 @@ def get_parameters(N=1000, T=100, n_states=5, n_obs=5, q=1.0, r=1.0,
             "C_w":np.eye(n_obs,n_obs)*r2,
             "H":H_DANSE,
             "mu_x0":np.zeros((n_states,1)),
-            "C_x0":np.zeros((n_states,n_states)),
+            "C_x0":np.eye(n_states,n_states),
             "batch_size":64,
             "rnn_type":"gru",
             "rnn_params_dict":{

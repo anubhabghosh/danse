@@ -75,7 +75,7 @@ class RNN_model(nn.Module):
         """ This function defines the initial hidden state of the RNN
         """
         # This method generates the first hidden state of zeros (h0) which is used in the forward pass
-        h0 = torch.zeros(self.num_layers, batch_size, self.hidden_dim)
+        h0 = torch.randn(self.num_layers, batch_size, self.hidden_dim)
         return h0
     
     def forward(self, x):
@@ -520,7 +520,4 @@ def test_danse(test_loader, options, device, model_file=None, test_logfile_path 
     plot_state_trajectory_axes(X=X_ref, X_est=X_hat_ref)
 
     return test_mse_loss   
-        
-    
-
 
