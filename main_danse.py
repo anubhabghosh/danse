@@ -110,31 +110,25 @@ def main():
     #device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu>0) else "cpu")
     #print("Device Used:{}".format(device))
     
-    logfile_path = "./log/".format(dataset_type)
-    modelfile_path = "./models/".format(dataset_type)
+    logfile_path = "./log/"
+    modelfile_path = "./models/"
 
     #NOTE: Currently this is hardcoded into the system
-    main_exp_name = "{}_danse_{}".format(dataset_type, model_type)
+    main_exp_name = "{}_danse_{}_m_{}_n_{}_T_{}_N_{}_{}dB_{}dB".format(
+                                                            dataset_type,
+                                                            model_type,
+                                                            n_states,
+                                                            n_obs,
+                                                            T,
+                                                            N_samples,
+                                                            inverse_r2_dB,
+                                                            nu_dB
+                                                            )
 
     #print(params)
-    tr_log_file_name = "training_{}_m_{}_n_{}_T_{}_N_{}_{}dB.log".format(
-                                                            model_type,
-                                                            n_states,
-                                                            n_obs,
-                                                            T,
-                                                            N_samples,
-                                                            inverse_r2_dB
-                                                            )
-    
-    te_log_file_name = "testing_{}_m_{}_n_{}_T_{}_N_{}_{}dB.log".format(
-                                                            model_type,
-                                                            n_states,
-                                                            n_obs,
-                                                            T,
-                                                            N_samples,
-                                                            inverse_r2_dB
-                                                            )
-    
+    tr_log_file_name = "training.log"
+    te_log_file_name = "testing.log"
+
     flag_log_dir, flag_log_file = check_if_dir_or_file_exists(os.path.join(logfile_path, main_exp_name),
                                                             file_name=tr_log_file_name)
     

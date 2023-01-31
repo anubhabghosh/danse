@@ -365,7 +365,7 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
             #    model_monitor.record(val_loss)
 
             # Displaying loss at an interval of 200 epochs
-            if tr_verbose == True and (((epoch + 1) % 5) == 0 or epoch == 0):
+            if tr_verbose == True and (((epoch + 1) % 10) == 0 or epoch == 0):
                 
                 print("Epoch: {}/{}, Training NLL:{:.9f}, Val. NLL:{:.9f} ".format(epoch+1, 
                 model.rnn.num_epochs, tr_loss, val_loss), file=orig_stdout)
@@ -463,7 +463,7 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
         else:
             print("Interrupted!! ...saving the model at epoch:{}".format(epoch+1))
 
-        model_filename = "{}_usenorm_{}_ckpt_epoch_{}_latest.pt".format(model.rnn_type, epoch+1)
+        model_filename = "danse_{}_ckpt_epoch_{}_latest.pt".format(model.rnn_type, epoch+1)
         torch.save(model, model_filepath + "/" + model_filename)
 
     print("------------------------------ Training ends --------------------------------- \n")
