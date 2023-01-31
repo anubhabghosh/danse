@@ -3,7 +3,7 @@ import numpy as np
 import scipy
 import torch
 from torch import distributions
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 from scipy.linalg import expm
 from utils.utils import save_dataset
 from parameters import get_parameters
