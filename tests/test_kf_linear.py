@@ -15,21 +15,21 @@ from parameters import get_parameters
 from generate_data import LinearSSM, generate_SSM_data
 from src.kf import KF
 from src.danse import DANSE, push_model
+from parse import parse
 
 def test_kf_linear(X, Y, kf_model):
 
-    _, Ty, dy = Y.shape
-    _, Tx, dx = X.shape
+    N, Ty, dy = Y.shape
+    N, Tx, dx = X.shape
 
-    assert Tx == Ty, "State and obervation sequence lengths are mismatching !"
     X_estimated_KF = torch.zeros_like(X).type(torch.FloatTensor)
-    Pk_estimated_KF = torch.zeros((1, Tx, dx, dx)).type(torch.FloatTensor)
-    mse_arr_KF = torch.zeros((1)).type(torch.FloatTensor)
+    Pk_estimated_KF = torch.zeros((N, Tx, dx, dx)).type(torch.FloatTensor)
+    mse_arr_KF = torch.zeros((N,)).type(torch.FloatTensor)
 
     # Running the Kalman filter on the given data
-    for j in range(0, 1):
+    for j in range(0, N):
 
-        for k in range(0, Tx):
+        for k in range(0, Ty):
 
             # Kalman prediction 
             x_rec_hat_neg_k, Pk_neg = kf_model.predict_estimate(F_k_prev=kf_model.F_k, Pk_pos_prev=kf_model.Pk_pos, Q_k_prev=kf_model.Q_k)
@@ -38,10 +38,10 @@ def test_kf_linear(X, Y, kf_model):
             x_rec_hat_pos_k, Pk_pos = kf_model.filtered_estimate(y_k=Y[j,k].view(-1,1))
 
             # Save filtered state estimates
-            X_estimated_KF[j,k,:] = x_rec_hat_pos_k.view(-1,)
+            X_estimated_KF[j,k+1,:] = x_rec_hat_pos_k.view(-1,)
 
             # Also save covariances
-            Pk_estimated_KF[j,k,:,:] = Pk_pos
+            Pk_estimated_KF[j,k+1,:,:] = Pk_pos
 
         mse_arr_KF[j] = mse_loss(X_estimated_KF[j], X[j])  # Calculate the squared error across the length of a single sequence
         #print("batch: {}, sequence: {}, mse_loss: {}".format(j+1, mse_arr[j]), file=orig_stdout)
@@ -51,7 +51,7 @@ def test_kf_linear(X, Y, kf_model):
 
 def test_danse_linear(danse_model, saved_model_file, Y, device='cpu'):
 
-    danse_model.load_state_dict(torch.load(saved_model_file))
+    danse_model.load_state_dict(torch.load(saved_model_file, map_location=device))
     danse_model = push_model(nets=danse_model, device=device)
     danse_model.eval()
 
@@ -64,16 +64,21 @@ def test_danse_linear(danse_model, saved_model_file, Y, device='cpu'):
 
 def test_linear(device='cpu', model_file_saved=None):
 
-    m = 10
-    n = 10
-    q = 0.1
-    r = 0.1
-    T = 6_000
-    nu_dB = 0
-    inverse_r2_dB = 40
+    _, rnn_type, m, n, T, _, inverse_r2_dB, nu_dB = parse("{}_danse_{}_m_{:d}_n_{:d}_T_{:d}_N_{:d}_{:f}dB_{:f}dB", model_file_saved.split('/')[-2])
+    
+    #m = 10
+    #n = 10
+    q = 1.0
+    r = 1.0
+    #T = 6_000
+    #nu_dB = 0
+    #inverse_r2_dB = 40
+    
+    # Initialize a Linear SSM with the extracted parameters
     linear_ssm = LinearSSM(n_states=m, n_obs=n, F=None, G=np.zeros((m,1)), H=None, 
-                        mu_e=np.zeros((m,1)), mu_w=np.zeros((n,1)), q=q, r=r, 
+                        mu_e=np.zeros((m,)), mu_w=np.zeros((n,)), q=q, r=r, 
                         Q=None, R=None)
+
     x_lin, y_lin = linear_ssm.generate_single_sequence(T=T, inverse_r2_dB=inverse_r2_dB, nu_dB=nu_dB)
 
     # Plotting the trajectories in 3d
@@ -122,10 +127,11 @@ def test_linear(device='cpu', model_file_saved=None):
         mu_w=linear_ssm.mu_w,
         C_w=linear_ssm.R,
         batch_size=1,
+        H=linear_ssm.H,
         mu_x0=np.zeros((linear_ssm.n_states,)),
         C_x0=np.eye(linear_ssm.n_states),
-        rnn_type=est_dict['danse']['rnn_type'],
-        rnn_params_dict=est_dict['danse']['rnn_params_dict'][est_dict['danse']['rnn_type']],
+        rnn_type=rnn_type,
+        rnn_params_dict=est_dict['danse']['rnn_params_dict'],
         device=device
     )
 
@@ -148,4 +154,6 @@ def test_linear(device='cpu', model_file_saved=None):
     return None
 
 if __name__ == "__main__":
-    test_linear()
+    device = 'cpu'
+    model_file_saved = './models/LinearSSM_danse_gru_m_5_n_5_T_500_N_500_20.0dB_0.0dB/danse_gru_ckpt_epoch_300_best.pt'
+    test_linear(device=device, model_file_saved=model_file_saved)

@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import math
 from torch import autograd, nn
-from utils.utils import dB_to_lin
+from utils.utils import dB_to_lin, mse_loss
 
 class EKF(nn.Module):
     """ This class implements an extended Kalman filter in PyTorch
@@ -53,7 +53,9 @@ class EKF(nn.Module):
         
         F_lin = torch.eye(self.n_states)
         for j in range(1, self.J+1):
-            F_lin += torch.matrix_power(self.f_k(x[0])*self.delta, j) / math.factorial(j)
+            F_lin += torch.matrix_power(torch.from_numpy(
+                self.f_k(np.asscalar(x[0].numpy()))
+                ).type(torch.FloatTensor) * self.delta, j) / math.factorial(j)
         return F_lin
 
     def predict_estimate(self, Pk_pos_prev, Q_k_prev, u_k=0.0):
@@ -134,34 +136,36 @@ class EKF(nn.Module):
         return H_k
 
     def run_mb_filter(self, X, Y):
+        
+        _, Ty, dy = Y.shape
+        _, Tx, dx = X.shape
 
         if len(Y.shape) == 3:
-            N, T, d = Y.shape
+            N, Ty, d = Y.shape
         elif len(Y.shape) == 2:
-            T, d = Y.shape
+            Ty, d = Y.shape
             N = 1
-            Y = Y.reshape((N, T, d))
+            Y = Y.reshape((N, Ty, d))
 
-        traj_estimated = torch.zeros((N, T, self.n_states))
-        Pk_estimated = torch.zeros((N, T, self.n_states, self.n_states))
-        mse_arr = torch.zeros((N,1))
+        traj_estimated = torch.zeros((N, Tx, self.n_states), device=self.device).type(torch.FloatTensor)
+        Pk_estimated = torch.zeros((N, Tx, self.n_states, self.n_states), device=self.device).type(torch.FloatTensor)
+        mse_arr = torch.zeros((N,)).type(torch.FloatTensor)
 
         for i in range(0, N):
-
-            for k in range(0, T):
+            for k in range(0, Ty):
 
                 x_rec_hat_neg_k, Pk_neg = self.predict_estimate(Pk_pos_prev=self.Pk_pos, Q_k_prev=self.Q_k)
                 
                 x_rec_hat_pos_k, Pk_pos = self.filtered_estimate(y_k=Y[i,k].view(-1,1))
             
                 # Save filtered state estimates
-                traj_estimated[i,k,:] = x_rec_hat_pos_k
+                traj_estimated[i,k+1,:] = x_rec_hat_pos_k.view(-1,)
+                
                 #Also save covariances
-                Pk_estimated[i,k,:,:] = Pk_pos
+                Pk_estimated[i,k+1,:,:] = Pk_pos
 
-                print("i: {}, k: {}, norm of kalman gain: {}".format(k, np.linalg.norm(self.K_k)))
-
-            mse_arr[i] = torch.linalg.norm(traj_estimated[i] - X[i])  # Calculate the squared error across the length of a single sequence
+            mse_arr[i] = mse_loss(traj_estimated[i], X[i])  # Calculate the squared error across the length of a single sequence
+            print("batch: {}, mse_loss: {}".format(i+1, mse_arr[i]))
 
         mse = torch.mean(mse_arr, dim=0) # Calculate the MSE by averaging over all examples in a batch
         

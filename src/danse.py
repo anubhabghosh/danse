@@ -188,7 +188,7 @@ class DANSE(nn.Module):
         Re_t_inv = torch.inverse(self.H @ self.L_xt_yt_prev @ torch.transpose(self.H, 0, 1) + self.C_w)
         self.K_t = (self.L_xt_yt_prev @ (self.H.T @ Re_t_inv))
         self.mu_xt_yt_current = self.mu_xt_yt_prev + torch.einsum('ntij,ntj->nti',self.K_t,(Yi_batch - torch.einsum('ij,ntj->nti',self.H,self.mu_xt_yt_prev)))
-        self.L_xt_yt_current = self.L_xt_yt_prev - self.K_t @ (self.H @ self.L_xt_yt_prev @ torch.transpose(self.H, 0, 1) + self.C_w) @ self.K_t.T
+        #self.L_xt_yt_current = self.L_xt_yt_prev - self.K_t @ (self.H @ self.L_xt_yt_prev @ torch.transpose(self.H, 0, 1) + self.C_w) @ self.K_t.T
         self.L_xt_yt_current = self.L_xt_yt_prev - torch.einsum('ntij,ntkl->ntik',
         torch.einsum('ntij,ntjk->ntik',
         self.K_t, self.H @ self.L_xt_yt_prev @ torch.transpose(self.H, 0, 1) + self.C_w), 

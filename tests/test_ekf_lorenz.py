@@ -6,6 +6,8 @@ import sys
 import os
 import matplotlib.pyplot as plt
 from torch.autograd import Variable
+from torch.autograd.functional import jacobian
+from parse import parse
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
@@ -19,7 +21,7 @@ from src.danse import DANSE, push_model
 
 def test_danse_lorenz(danse_model, saved_model_file, Y, device='cpu'):
 
-    danse_model.load_state_dict(torch.load(saved_model_file))
+    danse_model.load_state_dict(torch.load(saved_model_file, map_location=device))
     danse_model = push_model(nets=danse_model, device=device)
     danse_model.eval()
 
@@ -32,41 +34,14 @@ def test_danse_lorenz(danse_model, saved_model_file, Y, device='cpu'):
 
 def test_ekf_lorenz(X, Y, ekf_model):
 
-    _, Ty, dy = Y.shape
-    _, Tx, dx = X.shape
-    
-    assert Tx == Ty, "State and obervation sequence lengths are mismatching !"
-    X_estimated_ekf = torch.zeros_like(X).type(torch.FloatTensor)
-    Pk_estimated_ekf = torch.zeros((1, Tx, dx, dx)).type(torch.FloatTensor)
-    mse_arr_ekf = torch.zeros((1)).type(torch.FloatTensor)
-
-    # Running the Kalman filter on the given data
-    for j in range(0, 1):
-
-        for k in range(0, Tx):
-
-            # Kalman prediction 
-            x_rec_hat_neg_k, Pk_neg = ekf_model.predict_estimate(Pk_pos_prev=ekf_model.Pk_pos, Q_k_prev=ekf_model.Q_k)
-
-            # Kalman filtering 
-            x_rec_hat_pos_k, Pk_pos = ekf_model.filtered_estimate(y_k=Y[j,k].view(-1,1))
-
-            # Save filtered state estimates
-            X_estimated_ekf[j,k,:] = x_rec_hat_pos_k.view(-1,)
-
-            # Also save covariances
-            Pk_estimated_ekf[j,k,:,:] = Pk_pos
-
-        mse_arr_ekf[j] = mse_loss(X_estimated_ekf[j], X[j])  # Calculate the squared error across the length of a single sequence
-        #print("batch: {}, sequence: {}, mse_loss: {}".format(j+1, mse_arr[j]), file=orig_stdout)
-        print("batch: {}, mse_loss: {}".format(j+1, mse_arr_ekf[j]))
-    
+    X_estimated_ekf, Pk_estimated_ekf, mse_arr_ekf = ekf_model.run_mb_filter(X, Y)
     return X_estimated_ekf, Pk_estimated_ekf, mse_arr_ekf
 
 def get_test_sequence(d, J, T, delta, delta_d, inverse_r2_dB, nu_dB, decimate):
 
     lorenz_model = LorenzAttractorModel(d=d, J=J, delta=delta, delta_d=delta_d,
-                                    A_fn=A_fn, h_fn=h_fn, decimate=decimate)
+                                    A_fn=A_fn, h_fn=h_fn, decimate=decimate,
+                                    mu_e=np.zeros((d,)), mu_w=np.zeros((d,)))
 
     x_lorenz, y_lorenz = lorenz_model.generate_single_sequence(T=T, 
                                                     inverse_r2_dB=inverse_r2_dB,
@@ -88,21 +63,20 @@ def get_test_sequence(d, J, T, delta, delta_d, inverse_r2_dB, nu_dB, decimate):
 
 def test_lorenz(device='cpu', model_file_saved=None):
 
-    d = 3
-    T = 6_000
-    nu_dB = 0
+    _, rnn_type, m, n, T, _, inverse_r2_dB, nu_dB = parse("{}_danse_{}_m_{:d}_n_{:d}_T_{:d}_N_{:d}_{:f}dB_{:f}dB", model_file_saved.split('/')[-2])
+    d = m
+    #T = 6_000
+    #nu_dB = 0
     delta = 0.01
     delta_d = 0.02
     J = 20
-    inverse_r2_dB = 0
+    #inverse_r2_dB = 0
     decimate=False
     #A_fn = lambda z: torch.Tensor([
     #        [-10, 10, 0],
     #        [28, -1, -z[0]],
     #        [0, z[0], -8.0/3]
     #   ]).type(torch.FloatTensor)
-    A_fn = A_fn
-    h_fn = h_fn
 
     x_lorenz, y_lorenz, lorenz_model = get_test_sequence(d=d, T=T, nu_dB=nu_dB, delta=delta, delta_d=delta_d, J=J, 
                                         inverse_r2_dB=inverse_r2_dB, decimate=decimate)
@@ -114,8 +88,8 @@ def test_lorenz(device='cpu', model_file_saved=None):
 
     # Initialize the Kalman filter model in PyTorch
     ekf_model = EKF(
-        n_states=lorenz_model.d,
-        n_obs=lorenz_model.d,
+        n_states=lorenz_model.n_states,
+        n_obs=lorenz_model.n_obs,
         J=3,
         f=lorenz_model.A_fn,
         h=lorenz_model.h_fn,
@@ -135,19 +109,22 @@ def test_lorenz(device='cpu', model_file_saved=None):
     # Initialize the DANSE model in PyTorch
 
     ssm_dict, est_dict = get_parameters(N=1, T=Ty, n_states=lorenz_model.n_states,
-                                            n_obs=lorenz_model.n_obs, inverse_r2_dB=inverse_r2_dB, )
+                                        n_obs=lorenz_model.n_obs, 
+                                        inverse_r2_dB=inverse_r2_dB, 
+                                        nu_dB=nu_dB)
 
     # Initialize the DANSE model in PyTorch
     danse_model = DANSE(
-        n_states=lorenz_model.d,
-        n_obs=lorenz_model.d,
+        n_states=lorenz_model.n_states,
+        n_obs=lorenz_model.n_obs,
         mu_w=lorenz_model.mu_w,
         C_w=lorenz_model.R,
         batch_size=1,
+        H=jacobian(h_fn, torch.randn(lorenz_model.n_states,)).numpy(),
         mu_x0=np.zeros((lorenz_model.n_states,)),
         C_x0=np.eye(lorenz_model.n_states),
-        rnn_type=est_dict['danse']['rnn_type'],
-        rnn_params_dict=est_dict['danse']['rnn_params_dict'][est_dict['danse']['rnn_type']],
+        rnn_type=rnn_type,
+        rnn_params_dict=est_dict['danse']['rnn_params_dict'],
         device=device
     )
 
@@ -169,5 +146,7 @@ def test_lorenz(device='cpu', model_file_saved=None):
     return None
 
 if __name__ == "__main__":
-    test_lorenz()
+    device = 'cpu'
+    model_file_saved = 'models/LorenzSSM_danse_gru_m_3_n_3_T_1000_N_500_20.0dB_-20.0dB/danse_gru_ckpt_epoch_300_best.pt'
+    test_lorenz(device=device, model_file_saved=model_file_saved)
 
