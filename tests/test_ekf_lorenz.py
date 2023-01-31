@@ -99,7 +99,8 @@ def test_lorenz(device='cpu', model_file_saved=None):
         R=None,
         inverse_r2_dB=inverse_r2_dB,
         nu_dB=nu_dB,
-        device=device
+        device=device,
+        use_Taylor=use_Taylor
     )
 
     # Get the estimates using an extended Kalman filter model
