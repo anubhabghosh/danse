@@ -4,6 +4,7 @@ import math
 import torch
 from utils.utils import dB_to_lin
 from ssm_models import LinearSSM
+from torch.autograd.functional import jacobian
 
 torch.manual_seed(10)
 
@@ -23,11 +24,20 @@ def f_sinssm_fn(z, alpha=0.9, beta=1.1, phi=0.1*math.pi, delta=0.01):
 def h_sinssm_fn(z, a=1, b=1, c=0):
     return a * (b * z + c)
 
+def get_H_DANSE(type_, n_states, n_obs):
+    if type_ == "LinearSSM":
+        return LinearSSM(n_states=n_states, n_obs=n_obs).construct_H()
+    elif type_ == "LorenzSSM":
+        return np.eye(n_obs, n_states)
+    elif type_ == "SinusoidalSSM":
+        return jacobian(h_sinssm_fn, torch.randn(n_states,)).numpy()
+
 def get_parameters(N=1000, T=100, n_states=5, n_obs=5, q=1.0, r=1.0, 
     inverse_r2_dB=40, nu_dB=0, device='cpu'):
 
     #H_DANSE = np.eye(n_obs, n_states) # Lorenz attractor model
-    H_DANSE = LinearSSM(n_states=n_states, n_obs=n_obs).construct_H() # Linear SSM
+    #H_DANSE = LinearSSM(n_states=n_states, n_obs=n_obs).construct_H() # Linear SSM
+    H_DANSE = None
 
     r2 = 1.0 / dB_to_lin(inverse_r2_dB)
     q2 = dB_to_lin(nu_dB - inverse_r2_dB)

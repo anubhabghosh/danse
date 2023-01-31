@@ -48,8 +48,8 @@ def get_test_sequence(n_states, T, alpha, beta, phi, delta, a, b, c, inverse_r2_
                                                     inverse_r2_dB=inverse_r2_dB,
                                                     nu_dB=nu_dB)
 
-    plot_state_trajectory(x_sin)
-    plot_measurement_data(y_sin)
+    #plot_state_trajectory(x_sin)
+    #plot_measurement_data(y_sin)
 
     if decimate == True:
         print("Decimated ...")
@@ -64,9 +64,9 @@ def get_test_sequence(n_states, T, alpha, beta, phi, delta, a, b, c, inverse_r2_
 
 def test_sinusoidal(device='cpu', model_file_saved=None):
 
-    #_, rnn_type, m, n, T, _, inverse_r2_dB, nu_dB = parse("{}_danse_{}_m_{:d}_n_{:d}_T_{:d}_N_{:d}_{:f}dB_{:f}dB", model_file_saved.split('/')[-2])
-    n_states = 2
-    T = 100
+    _, rnn_type, m, n, T, _, inverse_r2_dB, nu_dB = parse("{}_danse_{}_m_{:d}_n_{:d}_T_{:d}_N_{:d}_{:f}dB_{:f}dB", model_file_saved.split('/')[-2])
+    n_states = m
+    #T = 100
     alpha = 0.9
     beta = 1.1
     phi = math.pi * 0.1
@@ -74,8 +74,8 @@ def test_sinusoidal(device='cpu', model_file_saved=None):
     a = 1.0
     b = 1.0 
     c = 0.0
-    inverse_r2_dB = 20
-    nu_dB = -20
+    #inverse_r2_dB = 20
+    #nu_dB = -20
     decimate=False
     use_Taylor=False
     #A_fn = lambda z: torch.Tensor([
@@ -113,10 +113,10 @@ def test_sinusoidal(device='cpu', model_file_saved=None):
 
     X_estimated_ekf, Pk_estimated_ekf, mse_arr_ekf = test_ekf_sinusoidal(X=X, Y=Y, ekf_model=ekf_model)
 
-    plot_state_trajectory_axes(X=torch.squeeze(X,0), X_est_EKF=torch.squeeze(X_estimated_ekf,0))
-    plot_state_trajectory(X=torch.squeeze(X,0), X_est_EKF=torch.squeeze(X_estimated_ekf,0))
+    #plot_state_trajectory_axes(X=torch.squeeze(X,0), X_est_EKF=torch.squeeze(X_estimated_ekf,0))
+    #plot_state_trajectory(X=torch.squeeze(X,0), X_est_EKF=torch.squeeze(X_estimated_ekf,0))
     
-    '''
+    
     # Initialize the DANSE model in PyTorch
 
     ssm_dict, est_dict = get_parameters(N=1, T=Ty, n_states=sin_model.n_states,
@@ -151,13 +151,12 @@ def test_sinusoidal(device='cpu', model_file_saved=None):
     
     # Plot the result
     plot_state_trajectory_axes(X=torch.squeeze(X,0), X_est_EKF=torch.squeeze(X_estimated_ekf,0), X_est_DANSE=torch.squeeze(X_estimated_filtered,0))
-    plot_state_trajectory(X=torch.squeeze(X,0), X_est_EKF=torch.squeeze(X_estimated_ekf,0), X_est_DANSE=torch.squeeze(X_estimated_filtered,0))
-    '''
+    #plot_state_trajectory(X=torch.squeeze(X,0), X_est_EKF=torch.squeeze(X_estimated_ekf,0), X_est_DANSE=torch.squeeze(X_estimated_filtered,0))
     plt.show()
     return None
 
 if __name__ == "__main__":
     device = 'cpu'
-    model_file_saved = None
+    model_file_saved = "./models/SinusoidalSSM_danse_lstm_m_2_n_2_T_100_N_1000_0.0dB_-20.0dB/danse_lstm_ckpt_epoch_300_best.pt"
     test_sinusoidal(device=device, model_file_saved=model_file_saved)
 

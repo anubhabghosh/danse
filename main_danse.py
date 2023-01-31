@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader, Dataset
 from utils.utils import load_saved_dataset, Series_Dataset, obtain_tr_val_test_idx, create_splits_file_name, \
     create_file_paths, check_if_dir_or_file_exists, load_splits_file, get_dataloaders, NDArrayEncoder
 # Import the parameters
-from parameters import get_parameters
+from parameters import get_parameters, get_H_DANSE
 #from utils.plot_functions import plot_measurement_data, plot_measurement_data_axes, plot_state_trajectory, plot_state_trajectory_axes
 
 # Import estimator model and functions
@@ -67,6 +67,7 @@ def main():
 
     batch_size = est_parameters_dict["danse"]["batch_size"] # Set the batch size
     estimator_options = est_parameters_dict["danse"] # Get the options for the estimator
+    estimator_options['H'] = get_H_DANSE(type_=dataset_type, n_states=n_states, n_obs=n_obs)
 
     if not os.path.isfile(datafile):
         
@@ -156,7 +157,7 @@ def main():
     
     if mode.lower() == "train":
 
-        model_danse = DANSE(**est_parameters_dict['danse'])
+        model_danse = DANSE(**estimator_options)
         tr_verbose = True  
         
         # Starting model training
@@ -164,7 +165,7 @@ def main():
             model=model_danse,
             train_loader=train_loader,
             val_loader=val_loader,
-            options=est_parameters_dict['danse'],
+            options=estimator_options,
             nepochs=model_danse.rnn.num_epochs,
             logfile_path=tr_logfile_name_with_path,
             modelfile_path=modelfile_path,
@@ -180,8 +181,8 @@ def main():
         losses_model["val_losses"] = val_losses
 
         with open(os.path.join(os.path.join(logfile_path, main_exp_name), 
-            'danse_{}_losses_eps{}.json'.format(est_parameters_dict['danse']['rnn_type'], 
-            est_parameters_dict['danse']['rnn_params_dict'][model_type]['num_epochs'])), 'w') as f:
+            'danse_{}_losses_eps{}.json'.format(estimator_options['rnn_type'], 
+            estimator_options['rnn_params_dict'][model_type]['num_epochs'])), 'w') as f:
             f.write(json.dumps(losses_model, cls=NDArrayEncoder, indent=2))
 
     elif mode.lower() == "test":
@@ -189,7 +190,7 @@ def main():
         #model_file_saved = "./model_checkpoints/{}_usenorm_{}_ckpt_epoch_{}.pt".format(model_type, usenorm_flag, epoch_test)
         te_loss = test_danse(
             test_loader=test_loader,
-            options=est_parameters_dict['danse'],
+            options=estimator_options,
             device=device,
             model_file=model_file_saved,
             test_logfile_path=te_logfile_name_with_path
