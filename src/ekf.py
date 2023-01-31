@@ -10,7 +10,7 @@ from utils.utils import dB_to_lin, mse_loss
 class EKF(nn.Module):
     """ This class implements an extended Kalman filter in PyTorch
     """
-    def __init__(self, n_states, n_obs, J=5, delta=0.01, f=None, h=None, Q=None, R=None, inverse_r2_dB=None, nu_dB=None, device='cpu'):
+    def __init__(self, n_states, n_obs, J=5, delta=0.01, f=None, h=None, Q=None, R=None, inverse_r2_dB=None, nu_dB=None, device='cpu', use_Taylor=False):
         super(EKF, self).__init__()
 
         self.n_states = n_states
@@ -23,6 +23,7 @@ class EKF(nn.Module):
         self.delta = delta # Step size for Taylor series expansion of order J
         self.f_k = f # State transition function (relates x_k, u_k to x_{k+1})
         self.h_k = h # Output function (relates state x_k to output y_k)
+        self.use_Taylor = use_Taylor # Flag to use Taylor series approximation or not
         
         if (not inverse_r2_dB is None) and (not nu_dB is None):
             r2 = 1.0 / dB_to_lin(inverse_r2_dB)
@@ -77,7 +78,11 @@ class EKF(nn.Module):
         # Trying QR decomposition to get Pk_neg from Pk_pos
         #F_k_prev = self.compute_jac_f_k(x_=self.x_hat_pos_k[0]).to(self.device).squeeze(-1)
         
-        F_k_prev = self.f_linearize(x=self.x_hat_pos_k).to(self.device)
+        if self.use_Taylor == True: # Case of Lorenz model 
+            F_k_prev = self.f_linearize(x=self.x_hat_pos_k).to(self.device)
+        else:
+            F_k_prev = self.compute_jac_f_k(x_=self.x_hat_pos_k).to(self.device)
+            
         self.Sk_pos_sqrt = torch.cholesky(Pk_pos_prev)
         Qk_prev_sqrt = torch.cholesky(Q_k_prev)
         A_state = torch.cat((F_k_prev @ self.Sk_pos_sqrt, Qk_prev_sqrt), dim=1)

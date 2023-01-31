@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from scipy.linalg import expm
 from utils.utils import save_dataset
 from parameters import get_parameters
-from ssm_models import LinearSSM, LorenzAttractorModel
+from ssm_models import LinearSSM, LorenzAttractorModel, SinusoidalSSM
 import argparse
 from parse import parse
 import os
@@ -42,6 +42,22 @@ def initialize_model(type_, parameters):
             mu_w=parameters["mu_w"]
                     )
          
+    elif type_ == "SinusoidalSSM":
+
+        model = SinusoidalSSM(
+            n_states=parameters["n_states"],
+            alpha=parameters["alpha"],
+            beta=parameters["beta"],
+            phi=parameters["phi"],
+            delta=parameters["delta"],
+            a=parameters["a"],
+            b=parameters["b"],
+            c=parameters["c"],
+            decimate=parameters["decimate"],
+            mu_e=parameters["mu_e"],
+            mu_w=parameters["mu_w"]
+        )
+
     return model
 
 def generate_SSM_data(model, T, parameters):
@@ -59,7 +75,7 @@ def generate_SSM_data(model, T, parameters):
                 add_noise_flag=False
             )
 
-    elif type_ == "LorenzSSM":
+    elif type_ == "LorenzSSM" or type_ == "SinusoidalSSM":
 
         X_arr = np.zeros((T, model.n_states))
         Y_arr = np.zeros((T, model.n_obs))

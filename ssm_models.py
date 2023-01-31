@@ -1,4 +1,5 @@
 import numpy as np
+import math
 from utils.utils import dB_to_lin, generate_normal
 
 class LinearSSM(object):
@@ -105,7 +106,7 @@ class LinearSSM(object):
 
 class LorenzAttractorModel(object):
 
-    def __init__(self, d, J, delta, delta_d, A_fn, h_fn, decimate=False, mu_e=None, mu_w=None) -> None:
+    def __init__(self, d, J, delta, delta_d, A_fn, h_fn, decimate=False, mu_e=None, mu_w=None, use_Taylor=True) -> None:
         
         self.n_states = d
         self.J = J
@@ -117,6 +118,7 @@ class LorenzAttractorModel(object):
         self.decimate = decimate
         self.mu_e = mu_e
         self.mu_w = mu_w
+        self.use_Taylor = use_Taylor
 
     def h_fn(self, x):
         return x
@@ -167,3 +169,65 @@ class LorenzAttractorModel(object):
             y_lorenz_d = y
 
         return x_lorenz_d, y_lorenz_d
+
+class SinusoidalSSM(object):
+
+    def __init__(self, n_states, alpha=0.9, beta=1.1, phi=0.1*math.pi, delta=0.01, a=1.0, b=1.0, c=0.0, decimate=False, mu_e=None, mu_w=None, use_Taylor=False):
+        
+        self.n_states = n_states
+        self.delta = delta
+        self.alpha = alpha
+        self.beta = beta
+        self.phi = phi
+        self.a = a
+        self.b = b
+        self.c = c
+        self.n_obs = self.h_fn(np.random.randn(self.n_states,1)).shape[0]
+        self.decimate = decimate
+        self.mu_e = mu_e
+        self.mu_w = mu_w
+        self.use_Taylor = use_Taylor
+
+    def init_noise_covs(self):
+
+        self.Q = self.q**2 * np.eye(self.n_states)
+        self.R = self.r**2 * np.eye(self.n_obs)
+        return None
+
+    def h_fn(self, x):
+        return self.a * (self.b * x + self.c)
+
+    def f_fn(self, x):
+        return self.alpha * np.sin(self.beta * x + self.phi) + self.delta
+
+    def generate_single_sequence(self, T, inverse_r2_dB, nu_dB):
+    
+        x = np.zeros((T+1, self.n_states))
+        y = np.zeros((T, self.n_obs))
+        
+        r2 = 1.0 / dB_to_lin(inverse_r2_dB)
+        q2 = dB_to_lin(nu_dB - inverse_r2_dB)
+        
+        self.r = r2
+        self.q = q2
+        
+        self.init_noise_covs()
+
+        print("Measurement variance: {}, Process variance: {}".format(r2, q2))
+        
+        e = np.random.multivariate_normal(np.zeros(self.n_states,), q2*np.eye(self.n_states),size=(T+1,))
+        v = np.random.multivariate_normal(np.zeros(self.n_obs,), r2*np.eye(self.n_obs),size=(T,))
+        
+        for t in range(0,T):
+            x[t+1] = self.f_fn(x[t]) + e[t]
+            y[t] = self.h_fn(x[t]) + v[t]
+        
+        if self.decimate == True:
+            K = self.delta_d // self.delta
+            x_d = x[0:T:K,:]
+            y_d = self.h_fn(x_d) + np.random.multivariate_normal(self.mu_e, self.R, size=(len(x_d),))
+        else:
+            x_d = x
+            y_d = y
+
+        return x_d, y_d

@@ -1,5 +1,6 @@
 # This function is used to define the parameters of the model
 import numpy as np
+import math
 import torch
 from utils.utils import dB_to_lin
 from ssm_models import LinearSSM
@@ -15,6 +16,12 @@ def A_fn(z):
 
 def h_fn(z):
     return z
+
+def f_sinssm_fn(z, alpha=0.9, beta=1.1, phi=0.1*math.pi, delta=0.01):
+    return alpha * (beta * z + phi) + delta
+
+def h_sinssm_fn(z, a=1, b=1, c=0):
+    return a * (b * z + c)
 
 def get_parameters(N=1000, T=100, n_states=5, n_obs=5, q=1.0, r=1.0, 
     inverse_r2_dB=40, nu_dB=0, device='cpu'):
@@ -58,10 +65,27 @@ def get_parameters(N=1000, T=100, n_states=5, n_obs=5, q=1.0, r=1.0,
             "mu_e":np.zeros((n_states,)),
             "mu_w":np.zeros((n_obs,)),
             "inverse_r2_dB":inverse_r2_dB,
-            "nu_dB":nu_dB
+            "nu_dB":nu_dB,
+            "use_Taylor":True
+        },
+        # Parameters of the Sinusoidal SSM
+        "SinusoidalSSM":{
+            "n_states":n_states,
+            "alpha":0.9,
+            "beta":1.1,
+            "phi":0.1*math.pi,
+            "delta":0.01,
+            "a":1.0,
+            "b":1.0,
+            "c":0.0,
+            "decimate":False,
+            "mu_e":np.zeros((n_states,)),
+            "mu_w":np.zeros((n_obs,)),
+            "inverse_r2_dB":inverse_r2_dB,
+            "nu_dB":nu_dB,
+            "use_Taylor":False
         },
     }
-
 
     estimators_dict={
         # Parameters of the DANSE estimator
