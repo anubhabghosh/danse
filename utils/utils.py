@@ -37,6 +37,12 @@ def mse_loss(x, xhat):
     loss = nn.MSELoss()
     return loss(xhat, x)
 
+def nmse_loss(x, xhat):
+    loss = nn.MSELoss()
+    noise_p = loss(xhat, x)
+    signal_p = loss(x, torch.zeros_like(x))
+    return 10*torch.log10(noise_p / signal_p)
+
 def get_mvnpdf(mean, cov):
 
     distr = MultivariateNormal(loc=mean, covariance_matrix=cov)
