@@ -4,6 +4,7 @@ import math
 import torch
 from utils.utils import dB_to_lin
 from ssm_models import LinearSSM
+import torch
 from torch.autograd.functional import jacobian
 
 torch.manual_seed(10)
@@ -66,8 +67,8 @@ def get_parameters(N=1000, T=100, n_states=5, n_obs=5, q=1.0, r=1.0,
         "LorenzSSM":{
             "n_states":n_states,
             "n_obs":n_obs,
-            "J":20,
-            "delta":0.01,
+            "J":5,
+            "delta":0.02,
             "A_fn":A_fn,
             "h_fn":h_fn,
             "delta_d":0.02,
