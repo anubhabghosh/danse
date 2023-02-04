@@ -170,7 +170,7 @@ class EKF(nn.Module):
                 Pk_estimated[i,k+1,:,:] = Pk_pos
 
             mse_arr[i] = mse_loss(traj_estimated[i], X[i])  # Calculate the squared error across the length of a single sequence
-            print("batch: {}, mse_loss: {}".format(i+1, mse_arr[i]))
+            #print("ekf, sample: {}, mse_loss: {}".format(i+1, mse_arr[i]))
 
         mse = torch.mean(mse_arr, dim=0) # Calculate the MSE by averaging over all examples in a batch
         

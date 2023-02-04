@@ -92,7 +92,7 @@ def plot_state_trajectory_axes(X, X_est_KF=None, X_est_EKF=None, X_est_UKF=None,
         if not X_est_EKF is None:
             plt.plot(X_est_EKF[:,0], ':',label='$\\hat{\mathbf{x}}_{EKF} (x-component) $')
         if not X_est_UKF is None:
-            plt.plot(X_est_UKF[:,0], '-.',label='$\\hat{\mathbf{x}}_{UKF} (x-component) $')
+            plt.plot(X_est_UKF[:,0], ':',label='$\\hat{\mathbf{x}}_{UKF} (x-component) $')
         plt.ylabel('$X_1$')
         plt.xlabel('$n$')
         plt.legend()
@@ -106,7 +106,7 @@ def plot_state_trajectory_axes(X, X_est_KF=None, X_est_EKF=None, X_est_UKF=None,
         if not X_est_EKF is None:
             plt.plot(X_est_EKF[:,1], ':',label='$\\hat{\mathbf{x}}_{EKF} (y-component) $')
         if not X_est_UKF is None:
-            plt.plot(X_est_UKF[:,1], '-.',label='$\\hat{\mathbf{x}}_{UKF} (y-component) $')
+            plt.plot(X_est_UKF[:,1], ':',label='$\\hat{\mathbf{x}}_{UKF} (y-component) $')
         plt.ylabel('$X_2$')
         plt.xlabel('$n$')
         plt.legend()
@@ -123,7 +123,7 @@ def plot_state_trajectory_axes(X, X_est_KF=None, X_est_EKF=None, X_est_UKF=None,
         if not X_est_EKF is None:
             plt.plot(X_est_EKF[:,0], ':',label='$\\hat{\mathbf{x}}_{EKF} (x-component) $')
         if not X_est_UKF is None:
-            plt.plot(X_est_UKF[:,0], '-.',label='$\\hat{\mathbf{x}}_{UKF} (x-component) $')
+            plt.plot(X_est_UKF[:,0], ':',label='$\\hat{\mathbf{x}}_{UKF} (x-component) $')
         plt.ylabel('$X_1$')
         plt.xlabel('$n$')
         plt.legend()
@@ -137,7 +137,7 @@ def plot_state_trajectory_axes(X, X_est_KF=None, X_est_EKF=None, X_est_UKF=None,
         if not X_est_EKF is None:
             plt.plot(X_est_EKF[:,1], ':',label='$\\hat{\mathbf{x}}_{EKF} (y-component) $')
         if not X_est_UKF is None:
-            plt.plot(X_est_UKF[:,1], '-.',label='$\\hat{\mathbf{x}}_{UKF} (y-component) $')
+            plt.plot(X_est_UKF[:,1], ':',label='$\\hat{\mathbf{x}}_{UKF} (y-component) $')
         plt.ylabel('$X_2$')
         plt.xlabel('$n$')
         plt.legend()
@@ -151,7 +151,7 @@ def plot_state_trajectory_axes(X, X_est_KF=None, X_est_EKF=None, X_est_UKF=None,
         if not X_est_EKF is None:
             plt.plot(X_est_EKF[:,2], ':',label='$\\hat{\mathbf{x}}_{EKF} (z-component) $')
         if not X_est_UKF is None:
-            plt.plot(X_est_UKF[:,2], '-.',label='$\\hat{\mathbf{x}}_{UKF} (z-component) $')
+            plt.plot(X_est_UKF[:,2], ':',label='$\\hat{\mathbf{x}}_{UKF} (z-component) $')
         plt.ylabel('$X_3$')
         plt.xlabel('$n$')
         plt.legend()
