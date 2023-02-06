@@ -37,6 +37,11 @@ def mse_loss(x, xhat):
     loss = nn.MSELoss()
     return loss(xhat, x)
 
+def mse_loss_dB(x, xhat):
+    loss = nn.MSELoss()
+    noise_p = loss(xhat, x)
+    return 10*torch.log10(noise_p)
+
 def nmse_loss(x, xhat):
     loss = nn.MSELoss()
     noise_p = loss(xhat, x)

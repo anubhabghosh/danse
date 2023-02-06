@@ -49,8 +49,8 @@ class LinearSSM(object):
 
     def init_noise_covs(self):
 
-        self.Q = self.q**2 * np.eye(self.n_states)
-        self.R = self.r**2 * np.eye(self.n_obs)
+        self.Q = self.q * np.eye(self.n_states)
+        self.R = self.r * np.eye(self.n_obs)
         return None
 
     def generate_driving_noise(k, a=1.2, add_noise=False):

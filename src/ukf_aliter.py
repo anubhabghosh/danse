@@ -3,13 +3,21 @@ import torch
 from torch import nn
 from timeit import default_timer as timer
 from utils.utils import dB_to_lin, mse_loss
+from scipy.linalg import expm
 import numpy as np
+
+def A_fn(z, dt):
+    return expm(np.array([
+                    [-10, 10, 0],
+                    [28, -1, -z[0]],
+                    [0, z[0], -8.0/3]
+                ])*dt) @ z
 
 class UKF_Aliter(nn.Module):
     """ This class implements an unscented Kalman filter in PyTorch
     """
     def __init__(self, n_states, n_obs, f=None, h=None, Q=None, R=None, kappa=-1, 
-                alpha=0.1, beta=2, n_sigma=None, inverse_r2_dB=None, 
+                alpha=0.1, beta=2, n_sigma=None, delta_t=1.0, inverse_r2_dB=None, 
                 nu_dB=None, device='cpu', init_cond=None):
         super(UKF_Aliter, self).__init__()
 
@@ -19,7 +27,7 @@ class UKF_Aliter(nn.Module):
         # Initializing the system model
         self.n_states = n_states # Setting the number of states of the Kalman filter
         self.n_obs = n_obs
-        self.f_k = f # State transition function (relates x_k, u_k to x_{k+1})
+        self.f_k = A_fn # State transition function (relates x_k, u_k to x_{k+1})
         self.h_k = h # Output function (relates state x_k to output y_k)
          
         if (not inverse_r2_dB is None) and (not nu_dB is None):
@@ -42,12 +50,19 @@ class UKF_Aliter(nn.Module):
 
         #self.init_cond = init_cond
 
-        self.ukf = UnscentedKalmanFilter(dim_x=self.n_states, dim_z=self.n_obs, dt=self.delta_t, fx=self.f_k, hx=self.h_k, points=self.sigma_points)
+        self.delta_t = delta_t
+        self.ukf = UnscentedKalmanFilter(dim_x=self.n_states, dim_z=self.n_obs, dt=self.delta_t, 
+                                        fx=self.f_k, hx=self.h_k, points=self.sigma_points)
         self.ukf.R = self.R_k.numpy()
         self.ukf.Q = self.Q_k.numpy()
         self.ukf.x = torch.zeros((self.n_states,)).numpy()
         self.ukf.P = (torch.eye(self.n_states)*1e-5).numpy()
         return None
+
+    def push_to_device(self, x):
+        """ Push the given tensor to the device
+        """
+        return torch.from_numpy(x).type(torch.FloatTensor).to(self.device)
 
     def get_sigma_points(self):
         self.sigma_points = MerweScaledSigmaPoints(self.n_states, alpha=self.alpha, beta=self.beta, kappa=self.kappa)
@@ -92,11 +107,11 @@ class UKF_Aliter(nn.Module):
         MSE_UKF_linear_avg = torch.mean(MSE_UKF_linear_arr)
         MSE_UKF_dB_avg = 10 * torch.log10(MSE_UKF_linear_avg)
         # Standard deviation
-        MSE_UKF_dB_std = torch.std(MSE_UKF_linear_arr, unbiased=True)
-        MSE_UKF_dB_std = 10 * torch.log10(MSE_UKF_dB_std)
+        #MSE_UKF_dB_std = torch.std(MSE_UKF_linear_arr, unbiased=True)
+        #MSE_UKF_dB_std = 10 * torch.log10(MSE_UKF_dB_std)
 
         print("UKF - MSE LOSS:", MSE_UKF_dB_avg, "[dB]")
-        print("UKF - MSE STD:", MSE_UKF_dB_std, "[dB]")
+        #print("UKF - MSE STD:", MSE_UKF_dB_std, "[dB]")
         # Print Run Time
         print("Inference Time:", t)
 

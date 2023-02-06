@@ -18,6 +18,8 @@ from utils.utils import generate_normal, dB_to_lin, lin_to_dB, mse_loss, nmse_lo
 from parameters import get_parameters, A_fn, h_fn
 from generate_data import LorenzAttractorModel, generate_SSM_data
 from src.ekf import EKF
+from src.ukf import UKF
+from src.ukf_aliter import UKF_Aliter
 from src.danse import DANSE, push_model
 
 def test_danse_lorenz(danse_model, saved_model_file, Y, device='cpu'):
@@ -32,6 +34,12 @@ def test_danse_lorenz(danse_model, saved_model_file, Y, device='cpu'):
         X_estimated_pred, Pk_estimated_pred, X_estimated_filtered, Pk_estimated_filtered = danse_model.compute_predictions(Y_test_batch)
     
     return X_estimated_pred, Pk_estimated_pred, X_estimated_filtered, Pk_estimated_filtered
+
+
+def test_ukf_lorenz(X, Y, ukf_model):
+
+    X_estimated_ukf, Pk_estimated_ukf, mse_arr_uk_lin, mse_arr_ukf = ukf_model.run_mb_filter(X, Y)
+    return X_estimated_ukf, Pk_estimated_ukf, mse_arr_uk_lin, mse_arr_ukf
 
 def test_ekf_lorenz(X, Y, ekf_model):
 
@@ -64,14 +72,15 @@ def test_lorenz(device='cpu', model_file_saved=None):
     print("*"*100)
     print("1/r2: {}dB, nu: {}dB".format(inverse_r2_dB, nu_dB))
     d = m
-    T = 2_000
-    #nu_dB = -10.0
-    delta = 0.01 # Testing case can be fixed to 0.01
+    #d = 3
+    T = 1_000
+    #nu_dB = -20
+    delta = 0.01 # If decimate is True, then set this delta to 1e-5 and run it for long time
     delta_d = 0.02
     J = 5
-    #inverse_r2_dB = 0
+    #inverse_r2_dB = 20
     decimate=False
-    use_Taylor=True
+    use_Taylor = True
     #A_fn = lambda z: torch.Tensor([
     #        [-10, 10, 0],
     #        [28, -1, -z[0]],
@@ -98,18 +107,12 @@ def test_lorenz(device='cpu', model_file_saved=None):
 
     _, Ty, dy = Y.shape
     _, Tx, dx = X.shape
-    
-    #Ty, dy = y_lorenz.shape
-    #Tx, dx = x_lorenz.shape
-    #Y = torch.Tensor(y_lorenz.reshape((1, Ty, dy))).type(torch.FloatTensor)
-    #X = torch.Tensor(x_lorenz.reshape((1, Tx, dx))).type(torch.FloatTensor)
 
     # Initialize the Kalman filter model in PyTorch
     ekf_model = EKF(
         n_states=lorenz_model.n_states,
         n_obs=lorenz_model.n_obs,
         J=J,
-        delta=lorenz_model.delta,
         f=lorenz_model.A_fn,
         h=lorenz_model.h_fn,
         Q=None,
@@ -128,13 +131,37 @@ def test_lorenz(device='cpu', model_file_saved=None):
     X_estimated_ekf, Pk_estimated_ekf, mse_arr_ekf = test_ekf_lorenz(X=X, Y=Y, ekf_model=ekf_model)
     time_elapsed_ekf = timer() - start_time_ekf
 
-    # Initialize the DANSE model in PyTorch
+    # Initialize the Kalman filter model in PyTorch
+    ukf_model = UKF_Aliter(
+        n_states=lorenz_model.n_states,
+        n_obs=lorenz_model.n_obs,
+        f=lorenz_model.A_fn,
+        h=lorenz_model.h_fn,
+        Q=None,
+        R=None,
+        kappa=-1, # Usually kept 0
+        alpha=0.01, # Usually small 1e-3
+        delta_t=lorenz_model.delta,
+        beta=2,
+        n_sigma=2*lorenz_model.n_states+1,
+        inverse_r2_dB=inverse_r2_dB,
+        nu_dB=nu_dB,
+        device=device
+    )
 
+    # Get the estimates using an extended Kalman filter model
+    X_estimated_ukf = None
+    Pk_estimated_ukf = None
+    start_time_ukf = timer()
+    X_estimated_ukf, Pk_estimated_ukf, mse_arr_ukf_lin, mse_arr_ukf = test_ukf_lorenz(X=X, Y=Y, ukf_model=ukf_model)
+    time_elapsed_ukf = timer() - start_time_ukf
+    # Initialize the DANSE model in PyTorch
+    
     ssm_dict, est_dict = get_parameters(N=1, T=Ty, n_states=lorenz_model.n_states,
                                         n_obs=lorenz_model.n_obs, 
                                         inverse_r2_dB=inverse_r2_dB, 
                                         nu_dB=nu_dB)
-
+    
     # Initialize the DANSE model in PyTorch
     danse_model = DANSE(
         n_states=lorenz_model.n_states,
@@ -154,41 +181,55 @@ def test_lorenz(device='cpu', model_file_saved=None):
     X_estimated_filtered = None
     Pk_estimated_ekf = None
     Pk_estimated_filtered = None
+
     start_time_danse = timer()
     X_estimated_pred, Pk_estimated_pred, X_estimated_filtered, Pk_estimated_filtered = test_danse_lorenz(danse_model=danse_model, 
                                                                                                 saved_model_file=model_file_saved,
                                                                                                 Y=Y,
                                                                                                 device=device)
     time_elapsed_danse = timer() - start_time_danse
-    nmse_ekf = nmse_loss(X[:,1:,:], X_estimated_ekf[:,1:,:])
-    nmse_danse = nmse_loss(X[:,1:,:], X_estimated_filtered[:,0:,:])
+    
+    #nmse_ekf = nmse_loss(X[:,1:,:], X_estimated_ekf[:,1:,:])
+    #nmse_ukf = nmse_loss(X[:,1:,:], X_estimated_ukf[:,1:,:])
+    #nmse_danse = nmse_loss(X[:,1:,:], X_estimated_filtered[:,0:,:])
+    nmse_ekf = mse_loss_dB(X[:,1:,:], X_estimated_ekf[:,1:,:])
+    nmse_ukf = mse_loss_dB(X[:,1:,:], X_estimated_ukf[:,1:,:])
+    nmse_danse = mse_loss_dB(X[:,1:,:], X_estimated_filtered[:,0:,:])
     snr = mse_loss(X[:,1:,:], torch.zeros_like(X[:,1:,:])) * dB_to_lin(inverse_r2_dB)
 
     print("ekf, batch: {}, mse over {} samples : {}, time: {} secs".format(1, N_test, nmse_ekf, time_elapsed_ekf))
+    print("ukf, batch: {}, mse over {} samples : {}, time: {} secs".format(1, N_test, nmse_ukf, time_elapsed_ukf))
     print("danse, batch: {}, mse over {} samples : {}, time: {} secs".format(1, N_test, nmse_danse, time_elapsed_danse))
 
-    # Plot the result for a single trajcetory
-    plot_state_trajectory_axes(X=torch.squeeze(X[0,1:,:],0), X_est_EKF=torch.squeeze(X_estimated_ekf[0,1:,:],0), X_est_DANSE=torch.squeeze(X_estimated_filtered[0],0), savefig=False, savefig_name="./figs/Lorenz_3d_r2{}dB_nu_{}dB.pdf".format(inverse_r2_dB, nu_dB))
-    plot_state_trajectory(X=torch.squeeze(X[0,1:,:],0), X_est_EKF=torch.squeeze(X_estimated_ekf[0,1:,:],0), X_est_DANSE=torch.squeeze(X_estimated_filtered[0],0), savefig=False, savefig_name="./figs/Lorenz_3d_axeswise_r2{}dB_nu_{}dB.pdf".format(inverse_r2_dB, nu_dB))
+    # Plot the result
+    plot_state_trajectory_axes(X=torch.squeeze(X[0,1:,:],0), X_est_EKF=torch.squeeze(X_estimated_ekf[0,1:,:],0), X_est_UKF=torch.squeeze(X_estimated_ukf[0,1:,:],0), X_est_DANSE=torch.squeeze(X_estimated_filtered[0],0))
+    plot_state_trajectory(X=torch.squeeze(X[0,1:,:],0), X_est_EKF=torch.squeeze(X_estimated_ekf[0,1:,:],0), X_est_UKF=torch.squeeze(X_estimated_ukf[0,1:,:],0), X_est_DANSE=torch.squeeze(X_estimated_filtered[0],0))
+    #plot_state_trajectory_axes(X=torch.squeeze(X,0), X_est_EKF=torch.squeeze(X_estimated_ekf,0), X_est_DANSE=torch.squeeze(X_estimated_filtered,0))
+    #plot_state_trajectory(X=torch.squeeze(X,0), X_est_EKF=torch.squeeze(X_estimated_ekf,0), X_est_DANSE=torch.squeeze(X_estimated_filtered,0))
     
-    return nmse_ekf, nmse_danse, time_elapsed_ekf, time_elapsed_danse, snr
+    #plt.show()
+    return nmse_ekf, nmse_danse, nmse_ukf, time_elapsed_ekf, time_elapsed_danse, time_elapsed_ukf, snr
 
 if __name__ == "__main__":
     device = 'cpu'
     inverse_r2_dB_arr = np.array([-10.0, 0.0, 10.0, 20.0, 30.0])
     #inverse_r2_dB_arr = np.array([20.0])
     nmse_ekf_arr = np.zeros((len(inverse_r2_dB_arr,)))
+    nmse_ukf_arr = np.zeros((len(inverse_r2_dB_arr,)))
     nmse_danse_arr = np.zeros((len(inverse_r2_dB_arr,)))
     t_ekf_arr = np.zeros((len(inverse_r2_dB_arr,)))
+    t_ukf_arr = np.zeros((len(inverse_r2_dB_arr,)))
     t_danse_arr = np.zeros((len(inverse_r2_dB_arr,)))
     snr_arr = np.zeros((len(inverse_r2_dB_arr,)))
 
     for i, inverse_r2_dB in enumerate(inverse_r2_dB_arr):
-        model_file_saved = 'models/LorenzModels_J20/LorenzSSM_danse_gru_m_3_n_3_T_1000_N_500_{}dB_-20.0dB/danse_gru_ckpt_epoch_300_best.pt'.format(inverse_r2_dB)
-        nmse_ekf_i, nmse_danse_i, time_elapsed_ekf_i, time_elapsed_danse_i, snr_i = test_lorenz(device=device, model_file_saved=model_file_saved)
+        model_file_saved = 'models/LorenzSSM_danse_gru_m_3_n_3_T_1000_N_500_{}dB_-20.0dB/danse_gru_ckpt_epoch_300_best.pt'.format(inverse_r2_dB)
+        nmse_ekf_i, nmse_danse_i, nmse_ukf_i, time_elapsed_ekf_i, time_elapsed_danse_i, time_elapsed_ukf_i, snr_i = test_lorenz(device=device, model_file_saved=model_file_saved)
         nmse_ekf_arr[i] = nmse_ekf_i.numpy().item()
+        nmse_ukf_arr[i] = nmse_ukf_i.numpy().item()
         nmse_danse_arr[i] = nmse_danse_i.numpy().item()
         t_ekf_arr[i] = time_elapsed_ekf_i
+        t_ukf_arr[i] = time_elapsed_ukf_i
         t_danse_arr[i] = time_elapsed_danse_i
         snr_arr[i] = 10*np.log10(snr_i.numpy().item())
 
@@ -198,6 +239,7 @@ if __name__ == "__main__":
     
     plt.plot(inverse_r2_dB_arr, nmse_ekf_arr, 'rd--', linewidth=1.5, label="NMSE-EKF")
     plt.plot(inverse_r2_dB_arr, nmse_danse_arr, 'bo-', linewidth=2.0, label="NMSE-DANSE")
+    plt.plot(inverse_r2_dB_arr, nmse_ukf_arr, 'ks-', linewidth=2.0, label="NMSE-UKF")
     plt.xlabel('$\\frac{1}{r^2}$ (in dB)')
     plt.ylabel('NMSE (in dB)')
     plt.grid(True)
@@ -208,6 +250,7 @@ if __name__ == "__main__":
     plt.figure()
     plt.plot(snr_arr, nmse_ekf_arr, 'rd--', linewidth=1.5, label="NMSE-EKF")
     plt.plot(snr_arr, nmse_danse_arr, 'bo-', linewidth=2.0, label="NMSE-DANSE")
+    plt.plot(snr_arr, nmse_ukf_arr, 'ks-', linewidth=2.0, label="NMSE-UKF")
     plt.xlabel('SNR (in dB)')
     plt.ylabel('NMSE (in dB)')
     plt.grid(True)
@@ -218,6 +261,7 @@ if __name__ == "__main__":
     plt.figure()
     #plt.subplot(211)
     plt.plot(inverse_r2_dB_arr, t_ekf_arr, 'rd--', linewidth=1.5, label="Inference time-EKF")
+    plt.plot(inverse_r2_dB_arr, t_ukf_arr, 'ks--', linewidth=1.5, label="Inference time-UKF")
     plt.plot(inverse_r2_dB_arr, t_danse_arr, 'bo-', linewidth=2.0, label="Inference time-DANSE")
     plt.xlabel('$\\frac{1}{r^2}$ (in dB)')
     plt.ylabel('Time (in s)')
@@ -228,6 +272,7 @@ if __name__ == "__main__":
     #plt.subplot(212)
     plt.figure()
     plt.plot(snr_arr, t_ekf_arr, 'rd--', linewidth=1.5, label="Inference time-EKF")
+    plt.plot(snr_arr, t_ukf_arr, 'ks-', linewidth=2.0, label="Inference time-UKF")
     plt.plot(snr_arr, t_danse_arr, 'bo-', linewidth=2.0, label="Inference time-DANSE")
     plt.xlabel('SNR (in dB)')
     plt.ylabel('Time (in s)')
@@ -236,3 +281,4 @@ if __name__ == "__main__":
     #plt.savefig('./figs/InferTime_vs_SNR_Lorenz.pdf')
 
     plt.show()
+
