@@ -470,9 +470,10 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
             print("Interrupted!! ...saving the model at epoch:{}".format(epoch+1))
         else:
             print("Interrupted!! ...saving the model at epoch:{}".format(epoch+1))
-
-        model_filename = "danse_{}_ckpt_epoch_{}_latest.pt".format(model.rnn_type, epoch+1)
-        torch.save(model, model_filepath + "/" + model_filename)
+        
+        if not save_chkpoints is None:
+            model_filename = "danse_{}_ckpt_epoch_{}_latest.pt".format(model.rnn_type, epoch+1)
+            torch.save(model, model_filepath + "/" + model_filename)
 
     print("------------------------------ Training ends --------------------------------- \n")
     # Restoring the original std out pointer

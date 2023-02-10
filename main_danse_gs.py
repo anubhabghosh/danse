@@ -142,8 +142,8 @@ def main():
 
     #print(params)
     # Json file to store grid search results
-    jsonfile_name = 'gs_results_danse_{}_T_{}_N_{}.json'.format(model_type, model_type, T, N_samples)
-    gs_log_file_name = 'gs_results_danse_{}_T_{}_N_{}.log'.format(model_type, model_type, T, N_samples)
+    jsonfile_name = 'gs_results_danse_{}_T_{}_N_{}.json'.format(model_type, T, N_samples)
+    gs_log_file_name = 'gs_results_danse_{}_T_{}_N_{}.log'.format(model_type, T, N_samples)
     
     flag_log_dir, flag_log_file = check_if_dir_or_file_exists(os.path.join(logfile_path, main_exp_name),
                                                             file_name=gs_log_file_name)
