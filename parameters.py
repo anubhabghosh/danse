@@ -118,9 +118,9 @@ def get_parameters(N=1000, T=100, n_states=5, n_obs=5, q=1.0, r=1.0,
                     "output_size":n_states,
                     "n_hidden":40,
                     "n_layers":2,
-                    "lr":1e-3,
-                    "num_epochs":300,
-                    "min_delta":1e-3,
+                    "lr":1e-2,
+                    "num_epochs":2000,
+                    "min_delta":5e-2,
                     "device":device
                 },
                 "rnn":{

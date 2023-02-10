@@ -46,7 +46,8 @@ def main():
     datafolder = "".join(datafile.split("/")[i]+"/" for i in range(len(datafile.split("/")) - 1))
     model_file_saved = args.model_file_saved
     splits_file = args.splits
-
+    
+    print("datafile: {}".format(datafile))
     print(datafile.split('/')[-1])
     # Dataset parameters obtained from the 'datafile' variable
     _, n_states, n_obs, _, T, N_samples, inverse_r2_dB, nu_dB = parse("{}_m_{:d}_n_{:d}_{}_data_T_{:d}_N_{:d}_r2_{:f}dB_nu_{:f}dB.pkl", datafile.split('/')[-1])

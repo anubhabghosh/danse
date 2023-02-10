@@ -257,6 +257,7 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
     
     # Set the model to training
     model.train()
+    mse_criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=model.rnn.lr)
     #scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.998)
     #scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=nepochs//3, gamma=0.9) # gamma was initially 0.9
@@ -322,6 +323,7 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
             tr_running_loss = 0.0
             tr_loss_epoch_sum = 0.0
             val_loss_epoch_sum = 0.0
+            val_mse_loss_epoch_sum = 0.0
         
             for i, data in enumerate(train_loader, 0):
             
@@ -341,7 +343,7 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
                     #print("Epoch: {}/{}, Batch index: {}, Training loss: {}".format(epoch+1, nepochs, i+1, tr_running_loss / 100), file=orig_stdout)
                     tr_running_loss = 0.0
             
-            #scheduler.step()
+            scheduler.step()
 
             endtime = timer()
             # Measure wallclock time
@@ -353,26 +355,32 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
                     
                     val_Y_batch, val_X_batch = data
                     Y_val_batch = Variable(val_Y_batch, requires_grad=False).type(torch.FloatTensor).to(device)
+                    val_mu_X_predictions_batch, val_var_X_predictions_batch, val_mu_X_filtered_batch, val_var_X_filtered_batch = model.compute_predictions(Y_val_batch)
                     log_pY_val_batch = -model.forward(Y_val_batch)
                     val_loss_epoch_sum += log_pY_val_batch.item()
-            
+                    val_mse_loss_batch = mse_criterion(val_X_batch[:,1:,:].to(device), val_mu_X_filtered_batch)
+                    # print statistics
+                    val_mse_loss_epoch_sum += val_mse_loss_batch.item()
+
+
             # Loss at the end of each epoch
             tr_loss = tr_loss_epoch_sum / len(train_loader)
             val_loss = val_loss_epoch_sum / len(val_loader)
+            val_mse_loss = val_mse_loss_epoch_sum / len(val_loader)
 
             # Record the validation loss per epoch
-            #if (epoch + 1) > 100: # nepochs/6 for complicated, 100 for simpler model
-            #    model_monitor.record(val_loss)
+            if (epoch + 1) > nepochs // 3: # nepochs/6 for complicated, 100 for simpler model
+                model_monitor.record(val_loss)
 
             # Displaying loss at an interval of 200 epochs
-            if tr_verbose == True and (((epoch + 1) % 10) == 0 or epoch == 0):
+            if tr_verbose == True and (((epoch + 1) % 50) == 0 or epoch == 0):
                 
-                print("Epoch: {}/{}, Training NLL:{:.9f}, Val. NLL:{:.9f} ".format(epoch+1, 
-                model.rnn.num_epochs, tr_loss, val_loss), file=orig_stdout)
+                print("Epoch: {}/{}, Training NLL:{:.9f}, Val. NLL:{:.9f}, Val. MSE:{:.9f}".format(epoch+1, 
+                model.rnn.num_epochs, tr_loss, val_loss, val_mse_loss), file=orig_stdout)
                 #save_model(model, model_filepath + "/" + "{}_ckpt_epoch_{}.pt".format(model.model_type, epoch+1))
 
-                print("Epoch: {}/{}, Training NLL:{:.9f}, Val. NLL:{:.9f}, Time_Elapsed:{:.4f} secs".format(epoch+1, 
-                model.rnn.num_epochs, tr_loss, val_loss, time_elapsed))
+                print("Epoch: {}/{}, Training NLL:{:.9f}, Val. NLL:{:.9f}, Val. MSE: {:.9f}, Time_Elapsed:{:.4f} secs".format(epoch+1, 
+                model.rnn.num_epochs, tr_loss, val_loss, val_mse_loss, time_elapsed))
             
             # Checkpointing the model every few  epochs
             #if (((epoch + 1) % 500) == 0 or epoch == 0) and save_chkpoints == True:     
@@ -412,7 +420,7 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
             tr_losses.append(tr_loss)
             val_losses.append(val_loss)
 
-            '''
+            
             # Check monitor flag
             if model_monitor.monitor(epoch=epoch+1) == True:
 
@@ -437,7 +445,7 @@ def train_danse(model, options, train_loader, val_loader, nepochs, logfile_path,
                 #best_val_epoch = epoch+1 # Corresponding value of epoch
                 #best_model_wts = copy.deepcopy(model.state_dict()) # Weights for the best model
 
-            '''
+            
         # Save the best model as per validation loss at the end
         print("\nSaving the best model at epoch={}, with training loss={}, validation loss={}".format(best_val_epoch, tr_loss_for_best_val_loss, best_val_loss))
         
