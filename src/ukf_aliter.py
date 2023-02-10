@@ -4,14 +4,36 @@ from torch import nn
 from timeit import default_timer as timer
 from utils.utils import dB_to_lin, mse_loss
 from scipy.linalg import expm
+from parameters import delta_t
 import numpy as np
+import math
 
-def A_fn(z, dt):
+def A_fn_exact(z, dt):
     return expm(np.array([
                     [-10, 10, 0],
                     [28, -1, -z[0]],
                     [0, z[0], -8.0/3]
                 ])*dt) @ z
+
+def f_lorenz_danse(x, dt):
+
+    x = torch.from_numpy(x).type(torch.FloatTensor)
+    B = torch.Tensor([[[0,  0, 0],[0, 0, -1],[0,  1, 0]], torch.zeros(3,3), torch.zeros(3,3)]).type(torch.FloatTensor)
+    C = torch.Tensor([[-10, 10,    0],
+                    [ 28, -1,    0],
+                    [  0,  0, -8/3]]).type(torch.FloatTensor)
+    #A = torch.add(torch.einsum('nhw,wa->nh', B, x).T,C)
+    A = torch.einsum('kn,nij->ij',x.reshape((1,-1)),B) 
+    #A = torch.reshape(torch.matmul(B, x),(3,3)).T # For KalmanNet
+    A += C
+    #delta = delta_t # Hardcoded for now
+    # Taylor Expansion for F    
+    F = torch.eye(3)
+    J = 2 # Hardcoded for now
+    for j in range(1,J+1):
+        F_add = (torch.matrix_power(A*delta_t, j)/math.factorial(j))
+        F = torch.add(F, F_add)
+    return torch.matmul(F, x).numpy()
 
 class UKF_Aliter(nn.Module):
     """ This class implements an unscented Kalman filter in PyTorch
@@ -27,10 +49,10 @@ class UKF_Aliter(nn.Module):
         # Initializing the system model
         self.n_states = n_states # Setting the number of states of the Kalman filter
         self.n_obs = n_obs
-        self.f_k = A_fn # State transition function (relates x_k, u_k to x_{k+1})
+        self.f_k = f_lorenz_danse # State transition function (relates x_k, u_k to x_{k+1})
         self.h_k = h # Output function (relates state x_k to output y_k)
          
-        if (not inverse_r2_dB is None) and (not nu_dB is None):
+        if (not inverse_r2_dB is None) and (not nu_dB is None) and (Q is None) and (R is None):
             r2 = 1.0 / dB_to_lin(inverse_r2_dB)
             q2 = dB_to_lin(nu_dB - inverse_r2_dB)
             Q = q2 * np.eye(self.n_states)
@@ -55,9 +77,14 @@ class UKF_Aliter(nn.Module):
                                         fx=self.f_k, hx=self.h_k, points=self.sigma_points)
         self.ukf.R = self.R_k.numpy()
         self.ukf.Q = self.Q_k.numpy()
-        self.ukf.x = torch.zeros((self.n_states,)).numpy()
+        self.ukf.x = torch.ones((self.n_states,)).numpy()
         self.ukf.P = (torch.eye(self.n_states)*1e-5).numpy()
         return None
+
+    def initialize(self):
+
+        self.ukf.x = torch.ones((self.n_states,)).numpy()
+        self.ukf.P = (torch.eye(self.n_states)*1e-5).numpy()
 
     def push_to_device(self, x):
         """ Push the given tensor to the device
@@ -88,31 +115,32 @@ class UKF_Aliter(nn.Module):
         
         start = timer()
         for i in range(0, N):
-            
+            self.initialize()
             #if self.init_cond is not None:
             #    self.ukf.x = torch.unsqueeze(self.init_cond[i, :], 1).numpy()
-            
             for k in range(0, Ty):
                 
                 self.ukf.predict()
                 self.ukf.update(Y[i,k,:].numpy())       
-                traj_estimated[i,k,:] = torch.from_numpy(self.ukf.x)
-                Pk_estimated[i,k,:,:] = torch.from_numpy(self.ukf.P)
+                traj_estimated[i,k+1,:] = torch.from_numpy(self.ukf.x)
+                Pk_estimated[i,k+1,:,:] = torch.from_numpy(self.ukf.P)
 
-            MSE_UKF_linear_arr[i] = mse_loss(traj_estimated[i], X[i]).item()
-        
+            #MSE_UKF_linear_arr[i] = mse_loss(traj_estimated[i], X[i]).item()
+            MSE_UKF_linear_arr[i] = mse_loss(X[i,1:,:], traj_estimated[i,1:,:]).item()
+            #print("ukf, sample: {}, mse_loss: {}".format(i+1, MSE_UKF_linear_arr[i]))
+
         end = timer()
         t = end - start
 
         MSE_UKF_linear_avg = torch.mean(MSE_UKF_linear_arr)
         MSE_UKF_dB_avg = 10 * torch.log10(MSE_UKF_linear_avg)
         # Standard deviation
-        #MSE_UKF_dB_std = torch.std(MSE_UKF_linear_arr, unbiased=True)
-        #MSE_UKF_dB_std = 10 * torch.log10(MSE_UKF_dB_std)
+        MSE_UKF_linear_std = torch.std(MSE_UKF_linear_arr, unbiased=True)
+        MSE_UKF_dB_std = 10 * torch.log10(MSE_UKF_linear_std.abs())
 
         print("UKF - MSE LOSS:", MSE_UKF_dB_avg, "[dB]")
-        #print("UKF - MSE STD:", MSE_UKF_dB_std, "[dB]")
+        print("UKF - MSE STD:", MSE_UKF_dB_std, "[dB]")
         # Print Run Time
-        print("Inference Time:", t)
+        #print("Inference Time:", t)
 
         return traj_estimated, Pk_estimated, MSE_UKF_linear_avg, MSE_UKF_dB_avg

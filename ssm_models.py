@@ -4,7 +4,7 @@ from utils.utils import dB_to_lin, generate_normal
 
 class LinearSSM(object):
 
-    def __init__(self, n_states, n_obs, F=None, G=None, H=None, mu_e=0.0, mu_w=0.0, q=1.0, r=1.0, Q=None, R=None) -> None:
+    def __init__(self, n_states, n_obs, F=None, G=None, H=None, mu_e=0.0, mu_w=0.0, q2=1.0, r2=1.0, Q=None, R=None) -> None:
         
         # Initialize system model parameters
         self.n_states = n_states
@@ -22,8 +22,8 @@ class LinearSSM(object):
         # Initialize noise variances
         self.mu_e = mu_e
         self.mu_w = mu_w
-        self.q = q 
-        self.r = r
+        self.q2 = q2 
+        self.r2 = r2
         self.Q = Q
         self.R = R
 
@@ -49,8 +49,8 @@ class LinearSSM(object):
 
     def init_noise_covs(self):
 
-        self.Q = self.q * np.eye(self.n_states)
-        self.R = self.r * np.eye(self.n_obs)
+        self.Q = self.q2 * np.eye(self.n_states)
+        self.R = self.r2 * np.eye(self.n_obs)
         return None
 
     def generate_driving_noise(k, a=1.2, add_noise=False):
@@ -71,8 +71,8 @@ class LinearSSM(object):
         r2 = 1.0 / dB_to_lin(inverse_r2_dB)
         q2 = dB_to_lin(nu_dB - inverse_r2_dB)
         
-        self.r = r2
-        self.q = q2
+        self.r2 = r2
+        self.q2 = q2
         
         self.init_noise_covs()
         
@@ -134,8 +134,8 @@ class LorenzAttractorModel(object):
 
     def init_noise_covs(self):
 
-        self.Q = self.q * np.eye(self.n_states)
-        self.R = self.r * np.eye(self.n_obs)
+        self.Q = self.q2 * np.eye(self.n_states)
+        self.R = self.r2 * np.eye(self.n_obs)
         return None
 
     def generate_single_sequence(self, T, inverse_r2_dB, nu_dB):
@@ -146,8 +146,8 @@ class LorenzAttractorModel(object):
         r2 = 1.0 / dB_to_lin(inverse_r2_dB)
         q2 = dB_to_lin(nu_dB - inverse_r2_dB)
         
-        self.r = r2
-        self.q = q2
+        self.r2 = r2
+        self.q2 = q2
         
         self.init_noise_covs()
         #print("Measurement variance: {}, Process variance: {}".format(r2, q2))

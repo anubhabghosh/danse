@@ -34,19 +34,30 @@ def count_params(model):
     return total_num_params, total_num_trainable_params
 
 def mse_loss(x, xhat):
-    loss = nn.MSELoss()
+    loss = nn.MSELoss(reduction='mean')
     return loss(xhat, x)
 
 def mse_loss_dB(x, xhat):
-    loss = nn.MSELoss()
-    noise_p = loss(xhat, x)
+    noise_p = mse_loss(xhat, x) 
     return 10*torch.log10(noise_p)
 
 def nmse_loss(x, xhat):
-    loss = nn.MSELoss()
+    #loss = nn.MSELoss(reduction='mean')
+    #noise_p = loss(xhat, x)
+    #signal_p = loss(x, torch.zeros_like(x))
+    return mse_loss_dB(xhat, x) - mse_loss_dB(x, torch.zeros_like(x))
+    #return 10*torch.log10(noise_p / signal_p)
+
+def nmse_loss_std(x, xhat):
+    loss = nn.MSELoss(reduction='none')
     noise_p = loss(xhat, x)
     signal_p = loss(x, torch.zeros_like(x))
-    return 10*torch.log10(noise_p / signal_p)
+    return 10*torch.log10(noise_p.mean((1,2)).std().abs()) - 10*torch.log10(signal_p.mean((1,2)).std().abs())
+
+def mse_loss_dB_std(x, xhat):
+    loss = nn.MSELoss(reduction='none')
+    noise_p = loss(xhat, x)
+    return 10*torch.log10(noise_p.mean((1,2)).std().abs())
 
 def get_mvnpdf(mean, cov):
 
@@ -320,6 +331,13 @@ class ConvergenceMonitor(object):
             pass
         
         return self.convergence_flag
+
+class NDArrayEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
+
 
 
 

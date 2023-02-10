@@ -25,7 +25,7 @@ class EKF(nn.Module):
         self.h_k = h # Output function (relates state x_k to output y_k)
         self.use_Taylor = use_Taylor # Flag to use Taylor series approximation or not
         
-        if (not inverse_r2_dB is None) and (not nu_dB is None):
+        if (not inverse_r2_dB is None) and (not nu_dB is None) and (Q is None) and (R is None):
             r2 = 1.0 / dB_to_lin(inverse_r2_dB)
             q2 = dB_to_lin(nu_dB - inverse_r2_dB)
             Q = q2 * np.eye(self.n_states)
@@ -33,18 +33,21 @@ class EKF(nn.Module):
         
         self.Q_k = self.push_to_device(Q) # Covariance matrix of the process noise, we assume process noise w_k ~ N(0, Q)
         self.R_k = self.push_to_device(R) # Covariance matrix of the measurement noise, we assume mesaurement noise v_k ~ N(0, R)
-        
-        # Defining the required state to be estimate 
-        self.x_hat_pos_k = torch.zeros((self.n_states, 1), device=self.device) # Assuming initial value of the state is zero, i.e. \hat{p}_0^{+} = 0
-        self.Pk_pos = torch.eye(self.n_states, device=self.device) # Assuming initial value of the state covariance for the filtered estimate is identity, i.e. P_{0 \vert 0} = I
-        self.Sk_pos_sqrt = torch.cholesky(self.Pk_pos).to(self.device) # Assuming initial value of the state covariance for the filtered estimate is identity, i.e. P_{0 \vert 0} = I
-        self.x_hat_neg_k = torch.empty((self.n_states, 1), device=self.device) # Prediction state \hat{x}_{k \vert k-1}
-        self.Sk_neg_sqrt = torch.empty_like(self.Sk_pos_sqrt, device=self.device) # Cholesky factor of the state covariance matrix S_{k \vert k-1} = \sqrt{P_{k \vert k-1}}
-        self.Pk_neg = torch.empty_like(self.Pk_pos, device=self.device) # State covariance matrix P_{k \vert k-1}
-        self.Kk = torch.zeros((self.n_states,self.n_obs), device=self.device) # The Kalman gain K_k (filtered version)
 
         return None
-    
+
+    def initialize_stats(self):
+
+        # Defining the required state to be estimate 
+        self.x_hat_pos_k = torch.ones((self.n_states, 1), device=self.device) # Assuming initial value of the state is zero, i.e. \hat{p}_0^{+} = 0
+        self.Pk_pos = torch.eye(self.n_states, device=self.device) # Assuming initial value of the state covariance for the filtered estimate is identity, i.e. P_{0 \vert 0} = I
+        self.Sk_pos_sqrt = torch.cholesky(self.Pk_pos).to(self.device) # Assuming initial value of the state covariance for the filtered estimate is identity, i.e. P_{0 \vert 0} = I
+        self.x_hat_neg_k = torch.zeros((self.n_states, 1), device=self.device) # Prediction state \hat{x}_{k \vert k-1}
+        self.Sk_neg_sqrt = torch.zeros_like(self.Sk_pos_sqrt, device=self.device) # Cholesky factor of the state covariance matrix S_{k \vert k-1} = \sqrt{P_{k \vert k-1}}
+        self.Pk_neg = torch.zeros_like(self.Pk_pos, device=self.device) # State covariance matrix P_{k \vert k-1}
+        self.Kk = torch.zeros((self.n_states,self.n_obs), device=self.device) # The Kalman gain K_k (filtered version)
+        return None
+
     def push_to_device(self, x):
         """ Push the given tensor to the device
         """
@@ -92,7 +95,7 @@ class EKF(nn.Module):
         self.Sk_neg_sqrt = Ra.T[:,:self.n_states]
 
         # Time update equation
-        self.x_hat_neg_k = F_k_prev @ self.x_hat_pos_k # Calculating the predicted state estimate using the previous filtered state estimate \hat{x}_{k-1 \vert k-1}^{+}
+        self.x_hat_neg_k = self.f_k(self.x_hat_pos_k) # Calculating the predicted state estimate using the previous filtered state estimate \hat{x}_{k-1 \vert k-1}^{+}
         self.Pk_neg = self.Sk_neg_sqrt @ self.Sk_neg_sqrt.T # Calculating the predicted state estimate covariance 
 
         return self.x_hat_neg_k, self.Pk_neg
@@ -157,6 +160,7 @@ class EKF(nn.Module):
         mse_arr = torch.zeros((N,)).type(torch.FloatTensor)
 
         for i in range(0, N):
+            self.initialize_stats()
             for k in range(0, Ty):
 
                 x_rec_hat_neg_k, Pk_neg = self.predict_estimate(Pk_pos_prev=self.Pk_pos, Q_k_prev=self.Q_k)
@@ -169,9 +173,12 @@ class EKF(nn.Module):
                 #Also save covariances
                 Pk_estimated[i,k+1,:,:] = Pk_pos
 
-            mse_arr[i] = mse_loss(traj_estimated[i], X[i])  # Calculate the squared error across the length of a single sequence
+            mse_arr[i] = mse_loss(X[i,1:,:], traj_estimated[i,1:,:])  # Calculate the squared error across the length of a single sequence
             #print("ekf, sample: {}, mse_loss: {}".format(i+1, mse_arr[i]))
 
-        mse = torch.mean(mse_arr, dim=0) # Calculate the MSE by averaging over all examples in a batch
-        
-        return traj_estimated, Pk_estimated, mse
+        mse_ekf_lin_avg = torch.mean(mse_arr, dim=0) # Calculate the MSE by averaging over all examples in a batch
+        mse_ekf_dB_avg = 10*torch.log10(mse_ekf_lin_avg)
+        print("EKF - MSE LOSS:", mse_ekf_dB_avg, "[dB]")
+        print("EKF - MSE STD:", 10*torch.log10(torch.std(mse_arr, dim=0).abs()), "[dB]")
+
+        return traj_estimated, Pk_estimated, mse_ekf_dB_avg
