@@ -25,6 +25,7 @@ from parameters import get_parameters, get_H_DANSE
 # Import estimator model and functions
 from src.danse import DANSE, train_danse, test_danse
 from utils.gs_utils import create_list_of_dicts
+import copy
 
 def main():
 
@@ -167,18 +168,18 @@ def main():
     # Parameters to be tuned
     if model_type == "gru":
         gs_params = {
-                    "n_hidden":[30, 40, 50, 60],
+                    "n_hidden":[30],
                     "n_layers":[1, 2],
-                    "num_epochs":[2000],
+                    "num_epochs":[20],
                     #"lr":[1e-2, 1e-3],
                     #"min_delta":[5e-2, 1e-2],
-                    "n_hidden_dense":[32, 64]
+                    "n_hidden_dense":[32]
                     }
     elif model_type == "lstm":
         gs_params = {
-                    "n_hidden":[30, 40, 50, 60],
+                    "n_hidden":[30],
                     "n_layers":[1, 2],
-                    "num_epochs":[2000],
+                    "num_epochs":[20],
                     #"lr":[1e-2, 1e-3],
                     #"min_delta":[5e-2, 1e-2],
                     "n_hidden_dense":[32, 64]
@@ -191,7 +192,8 @@ def main():
         
     print("Grid Search to be carried over following {} configs:\n".format(len(gs_list_of_options)))
     val_errors_list = []
-
+    
+    gs_stats = {}
     for i, gs_option in enumerate(gs_list_of_options):
         
         # Load the model with the corresponding options
@@ -216,16 +218,20 @@ def main():
         #if tr_verbose == True:
         #    plot_losses(tr_losses=tr_losses, val_losses=val_losses, logscale=False)
         
-        gs_option["Config_no"] = i+1
-        gs_option["tr_loss_end"] = tr_losses[-1]
-        gs_option["val_loss_end"] = val_losses[-1]
-        gs_option["tr_loss_best"] = tr_loss_for_best_val_loss
-        gs_option["val_loss_best"] = best_val_loss
-
-        val_errors_list.append(gs_option)
+        gs_stats["Config_no"] = i+1
+        gs_stats["tr_loss_end"] = tr_losses[-1]
+        gs_stats["val_loss_end"] = val_losses[-1]
+        gs_stats["tr_loss_best"] = tr_loss_for_best_val_loss
+        gs_stats["val_loss_best"] = best_val_loss
+        gs_stats["rnn_params_dict"] = copy.deepcopy(gs_option['rnn_params_dict'][model_type])
+        gs_stats["rnn_params_dict"]["device"] = "cuda"
+        
+        print(gs_stats)
+        val_errors_list.append(copy.deepcopy(gs_stats))
         
     with open(jsonfile_name_with_path, 'w') as f:
-        f.write(json.dumps(val_errors_list, indent=2))
+        print(val_errors_list)
+        f.write(json.dumps(val_errors_list, indent=2, cls=NDArrayEncoder))
 
     return None
 
