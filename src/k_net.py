@@ -105,25 +105,26 @@ class KalmanNetNN(nn.Module):
     def step_prior(self):
 
         # Compute the 1-st moment of x based on model knowledge and without process noise
-        self.state_process_prior_0 = torch.zeros_like(self.state_process_posterior_0)
+        self.state_process_prior_0 = torch.zeros_like(self.state_process_posterior_0).type(torch.FloatTensor).to(self.device)
         for i in range(self.state_process_posterior_0.shape[1]):
+            print(i, self.state_process_prior_0.shape, self.state_process_posterior_0.shape)
             self.state_process_prior_0[:, i] = self.f_k(self.state_process_posterior_0[:,i].reshape((-1,1))).view(-1,)
         #self.state_process_prior_0 = self.f_k(self.state_process_posterior_0) # torch.matmul(self.F,self.state_process_posterior_0)
 
         # Compute the 1-st moment of y based on model knowledge and without noise
-        self.obs_process_0 = torch.zeros_like(self.state_process_posterior_0)
+        self.obs_process_0 = torch.zeros_like(self.state_process_prior_0).type(torch.FloatTensor).to(self.device)
         for i in range(self.state_process_posterior_0.shape[1]):
-            self.state_process_prior_0[:, i] = self.h_k(self.state_process_posterior_0[:,i].reshape((-1,1))).view(-1,)
+            self.obs_process_0[:, i] = self.h_k(self.state_process_prior_0[:,i].reshape((-1,1))).view(-1,)
         #self.obs_process_0 = self.h_k(self.state_process_posterior_0) # torch.matmul(self.H, self.state_process_prior_0)
 
         # Predict the 1-st moment of x
         self.m1x_prev_prior = self.m1x_prior
-        self.m1x_prior = torch.zeros_like(self.m1x_posterior)
+        self.m1x_prior = torch.zeros_like(self.m1x_posterior).type(torch.FloatTensor).to(self.device)
         for i in range(self.m1x_posterior.shape[1]):
             self.m1x_prior[:,i] = self.f_k(self.m1x_posterior[:,i].reshape((-1,1))).view(-1,) # torch.matmul(self.F, self.m1x_posterior)
 
         # Predict the 1-st moment of y
-        self.m1y = torch.zeros_like(self.m1x_prior)
+        self.m1y = torch.zeros_like(self.m1x_prior).type(torch.FloatTensor).to(self.device)
         for i in range(self.m1y.shape[1]):
             self.m1y[:,i] = self.h_k(self.m1x_prior[:,i].reshape((-1,1))).view(-1,) # torch.matmul(self.H, self.m1x_prior)
 
@@ -321,14 +322,14 @@ def train_KalmanNetNN(model, options, train_loader, val_loader, nepochs,
         y_cv, cv_target = next(iter(val_loader))
         _, Ty, dy = y_cv.shape
         #_, _, dx = cv_target.shape
-        y_cv = torch.transpose(y_cv, 1, 2).type(torch.FloatTensor)
-        cv_target = torch.transpose(cv_target, 1, 2).type(torch.FloatTensor)
+        y_cv = torch.transpose(y_cv, 1, 2).type(torch.FloatTensor).to(model.device)
+        cv_target = torch.transpose(cv_target, 1, 2).type(torch.FloatTensor).to(model.device)
 
         model.SetBatch(options["N_CV"])
         model.InitSequence(torch.zeros(model.n_states,1))
 
-        x_out_cv = torch.empty(options["N_CV"], model.ssModel.n_states, Ty, device= device)
-        y_out_cv = torch.empty(options["N_CV"], model.ssModel.n_obs, Ty, device= device)
+        x_out_cv = torch.empty(options["N_CV"], model.ssModel.n_states, Ty, device= device).to(model.device)
+        y_out_cv = torch.empty(options["N_CV"], model.ssModel.n_obs, Ty, device= device).to(model.device)
 
         for t in range(0, Ty):
             #print("Time instant t:{}".format(t+1))
@@ -352,7 +353,8 @@ def train_KalmanNetNN(model, options, train_loader, val_loader, nepochs,
         if (relevant_loss < MSE_cv_dB_opt):
             MSE_cv_dB_opt = relevant_loss
             MSE_cv_idx_opt = ti
-            torch.save(model.state_dict(), modelfile_path + "/" + "knet_ckpt_epoch_{}.pt".format(ti+1))
+            print("Saving model ...")
+            torch.save(model.state_dict(), modelfile_path + "/" + "knet_ckpt_epoch_best.pt")
 
         ###############################
         ### Training Sequence Batch ###
@@ -368,14 +370,14 @@ def train_KalmanNetNN(model, options, train_loader, val_loader, nepochs,
 
         # Load random batch sized data, creating new iter ensures the data is shuffled
         y_training, train_target = next(iter(train_loader))
-        y_training = torch.transpose(y_training, 1, 2).type(torch.FloatTensor)
-        train_target = torch.transpose(train_target, 1, 2).type(torch.FloatTensor)
+        y_training = torch.transpose(y_training, 1, 2).type(torch.FloatTensor).to(model.device)
+        train_target = torch.transpose(train_target, 1, 2).type(torch.FloatTensor).to(model.device)
 
         model.SetBatch(options["N_E"])
         model.InitSequence(torch.zeros(model.n_states,1))
 
-        x_out_training = torch.empty(options["N_E"], model.n_states, Ty, device=device)
-        y_out_training = torch.empty(options["N_E"], model.n_obs, Ty,device=device)
+        x_out_training = torch.empty(options["N_E"], model.n_states, Ty, device=device).to(model.device)
+        y_out_training = torch.empty(options["N_E"], model.n_obs, Ty,device=device).to(model.device)
 
         for t in range(0, Ty):
             x_out_training[:,:,t] = model(y_training[:,:,t]).T

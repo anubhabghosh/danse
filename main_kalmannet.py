@@ -171,10 +171,10 @@ def main():
                         mu_e=np.zeros((n_states,)), mu_w=np.zeros((n_obs,)), q2=1.0, r2=1.0, 
                         Q=None, R=None)
         def fn(x):
-            return torch.from_numpy(ssm_model.F).type(torch.FloatTensor) @ x
+            return torch.from_numpy(ssm_model.F).type(torch.FloatTensor).to(device) @ x
         
         def hn(x):
-            return torch.from_numpy(ssm_model.H).type(torch.FloatTensor) @ x
+            return torch.from_numpy(ssm_model.H).type(torch.FloatTensor).to(device) @ x
 
     elif ssm_type == "LorenzSSM":
         ssm_model = LorenzAttractorModel(d=n_states,
