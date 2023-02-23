@@ -172,18 +172,18 @@ def main():
     # Parameters to be tuned
     if model_type == "gru":
         gs_params = {
-                    "n_hidden":[30],
+                    "n_hidden":[30, 40, 50, 60],
                     "n_layers":[1, 2],
-                    "num_epochs":[20],
+                    "num_epochs":[2000],
                     #"lr":[1e-2, 1e-3],
                     #"min_delta":[5e-2, 1e-2],
-                    "n_hidden_dense":[32]
+                    "n_hidden_dense":[32,64]
                     }
     elif model_type == "lstm":
         gs_params = {
-                    "n_hidden":[30],
+                    "n_hidden":[30, 40, 50, 60],
                     "n_layers":[1, 2],
-                    "num_epochs":[20],
+                    "num_epochs":[2000],
                     #"lr":[1e-2, 1e-3],
                     #"min_delta":[5e-2, 1e-2],
                     "n_hidden_dense":[32, 64]
