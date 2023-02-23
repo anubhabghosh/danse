@@ -23,6 +23,12 @@ import json
 
 def test_kf_linear(X, Y, kf_model):
 
+    X_estimated_kf, Pk_estimated_kf, mse_arr_kf = kf_model.run_mb_filter(X, Y)
+    return X_estimated_kf, Pk_estimated_kf, mse_arr_kf
+
+'''
+def test_kf_linear(X, Y, kf_model):
+
     N, Ty, dy = Y.shape
     N, Tx, dx = X.shape
 
@@ -49,13 +55,14 @@ def test_kf_linear(X, Y, kf_model):
 
         mse_arr_KF[j] = mse_loss(X_estimated_KF[j], X[j])  # Calculate the squared error across the length of a single sequence
         #print("batch: {}, sequence: {}, mse_loss: {}".format(j+1, mse_arr[j]), file=orig_stdout)
-        print("kf, sample: {}, mse_loss: {}".format(i+1, mse_arr_KF[i]))
+        #print("kf, sample: {}, mse_loss: {}".format(i+1, mse_arr_KF[i]))
 
     mse_kf_lin_avg = torch.mean(mse_arr_KF, dim=0) # Calculate the MSE by averaging over all examples in a batch
     mse_kf_dB_avg = 10*torch.log10(mse_kf_lin_avg)
     print("KF - MSE LOSS:", mse_kf_dB_avg, "[dB]")
     print("KF - MSE STD:", 10*torch.log10(torch.std(mse_arr_KF, dim=0).abs()), "[dB]")
     return X_estimated_KF, Pk_estimated_KF, mse_arr_KF
+'''
 
 def test_danse_linear(danse_model, saved_model_file, Y, device='cpu'):
 
@@ -70,7 +77,7 @@ def test_danse_linear(danse_model, saved_model_file, Y, device='cpu'):
     
     return X_estimated_pred, Pk_estimated_pred, X_estimated_filtered, Pk_estimated_filtered
 
-def test_linear(device='cpu', model_file_saved=None, test_data_file=None):
+def test_linear(device='cpu', model_file_saved=None, test_data_file=None, test_logfile=None, evaluation_mode=None):
 
     _, rnn_type, m, n, T, _, inverse_r2_dB, nu_dB = parse("{}_danse_{}_m_{:d}_n_{:d}_T_{:d}_N_{:d}_{:f}dB_{:f}dB", model_file_saved.split('/')[-2])
     
@@ -82,7 +89,10 @@ def test_linear(device='cpu', model_file_saved=None, test_data_file=None):
     #T = 6_000
     #nu_dB = 0
     #inverse_r2_dB = 40
-    
+    orig_stdout = sys.stdout
+    f_tmp = open(test_logfile, 'a')
+    sys.stdout = f_tmp
+
     if not os.path.isfile(test_data_file):
         
         print('Dataset is not present, creating at {}'.format(test_data_file))
@@ -96,8 +106,6 @@ def test_linear(device='cpu', model_file_saved=None, test_data_file=None):
         linear_ssm = LinearSSM(n_states=m, n_obs=n, F=None, G=np.zeros((m,1)), H=None, 
                             mu_e=np.zeros((m,)), mu_w=np.zeros((n,)), q2=q2, r2=r2, 
                             Q=None, R=None)
-
-        x_lin, y_lin = linear_ssm.generate_single_sequence(T=T, inverse_r2_dB=inverse_r2_dB, nu_dB=nu_dB)
 
         print("Test data generated using r2: {} dB, nu: {} dB".format(inverse_r2_dB_test, nu_dB_test))
         for i in range(N_test):
@@ -121,11 +129,13 @@ def test_linear(device='cpu', model_file_saved=None, test_data_file=None):
         linear_ssm = test_data_dict["model"]
 
     print("*"*100)
+    print("*"*100,file=orig_stdout)
     i_test = np.random.choice(N_test)
     print("1/r2: {}dB, nu: {}dB".format(inverse_r2_dB_test, nu_dB_test))
+    print("1/r2: {}dB, nu: {}dB".format(inverse_r2_dB_test, nu_dB_test), file=orig_stdout)
     #print(i_test)
-    Y = Y[:5]
-    X = X[:5]
+    #Y = Y[:5]
+    #X = X[:5]
     
     N_test, Ty, dy = Y.shape
     N_test, Tx, dx = X.shape
@@ -209,7 +219,7 @@ def test_linear(device='cpu', model_file_saved=None, test_data_file=None):
     print("DANSE - MSE LOSS:",mse_dB_danse, "[dB]")
     print("DANSE - MSE STD:", mse_dB_danse_std, "[dB]")
 
-    snr = mse_loss(X[:,1:,:], torch.zeros_like(X[:,1:,:])) * dB_to_lin(inverse_r2_dB_test)
+    snr = mse_loss(X[:,1:,:], torch.zeros_like(X[:,1:,:])).mean() * dB_to_lin(inverse_r2_dB_test)
 
     print("LS, batch size: {}, nmse: {:.4f} ± {:.4f}[dB], mse: {:.4f} ± {:.4f}[dB]".format(N_test, nmse_ls, nmse_ls_std, mse_dB_ls, mse_dB_ls_std))
     print("kf, batch size: {}, nmse: {:.4f} ± {:.4f}[dB], mse: {:.4f} ± {:.4f}[dB], time: {:.4f} secs".format(N_test, nmse_kf, nmse_kf_std, mse_dB_kf, mse_dB_kf_std, time_elapsed_kf))
@@ -217,24 +227,34 @@ def test_linear(device='cpu', model_file_saved=None, test_data_file=None):
     print("danse (pred.), batch size: {}, nmse: {:.4f} ± {:.4f}[dB], mse: {:.4f} ± {:.4f}[dB], time: {:.4f} secs".format(N_test, nmse_danse_pred, nmse_danse_pred_std, mse_dB_danse_pred, mse_dB_danse_pred_std, time_elapsed_danse))
     print("danse (fil.), batch size: {}, nmse: {:.4f} ± {:.4f}[dB], mse: {:.4f} ± {:.4f}[dB], time: {:.4f} secs".format(N_test, nmse_danse, nmse_danse_std, mse_dB_danse, mse_dB_danse_std, time_elapsed_danse))
 
+    print("LS, batch size: {}, nmse: {:.4f} ± {:.4f}[dB], mse: {:.4f} ± {:.4f}[dB]".format(N_test, nmse_ls, nmse_ls_std, mse_dB_ls, mse_dB_ls_std), file=orig_stdout)
+    print("kf, batch size: {}, nmse: {:.4f} ± {:.4f}[dB], mse: {:.4f} ± {:.4f}[dB], time: {:.4f} secs".format(N_test, nmse_kf, nmse_kf_std, mse_dB_kf, mse_dB_kf_std, time_elapsed_kf), file=orig_stdout)
+    #print("danse, batch size: {}, nmse: {} ± {}[dB], mse: {} ± {}[dB], time: {} secs".format(N_test, nmse_danse, nmse_danse_std, mse_dB_danse, mse_dB_danse_std, time_elapsed_danse))
+    print("danse (pred.), batch size: {}, nmse: {:.4f} ± {:.4f}[dB], mse: {:.4f} ± {:.4f}[dB], time: {:.4f} secs".format(N_test, nmse_danse_pred, nmse_danse_pred_std, mse_dB_danse_pred, mse_dB_danse_pred_std, time_elapsed_danse), file=orig_stdout)
+    print("danse (fil.), batch size: {}, nmse: {:.4f} ± {:.4f}[dB], mse: {:.4f} ± {:.4f}[dB], time: {:.4f} secs".format(N_test, nmse_danse, nmse_danse_std, mse_dB_danse, mse_dB_danse_std, time_elapsed_danse), file=orig_stdout)
+
     # Plot the result
     plot_state_trajectory_axes(X=torch.squeeze(X[0,1:,:],0), 
                         X_est_KF=torch.squeeze(X_estimated_kf[0,1:,:], 0), 
                         X_est_DANSE=torch.squeeze(X_estimated_filtered[0], 0),
                         savefig=True,
-                        savefig_name="./figs/LinearModel/Full/AxesWisePlot_r2_{}dB_nu_{}dB.pdf".format(inverse_r2_dB_test, nu_dB_test))
+                        savefig_name="./figs/LinearModel/{}/AxesWisePlot_r2_{}dB_nu_{}dB.pdf".format(evaluation_mode, inverse_r2_dB_test, nu_dB_test))
     
     plot_state_trajectory(X=torch.squeeze(X[0,1:,:],0), 
                         X_est_KF=torch.squeeze(X_estimated_kf[0,1:,:], 0), 
                         X_est_DANSE=torch.squeeze(X_estimated_filtered[0], 0),
                         savefig=True,
-                        savefig_name="./figs/LinearModel/Full/3dPlot_r2_{}dB_nu_{}dB.pdf".format(inverse_r2_dB_test, nu_dB_test))
+                        savefig_name="./figs/LinearModel/{}/3dPlot_r2_{}dB_nu_{}dB.pdf".format(evaluation_mode, inverse_r2_dB_test, nu_dB_test))
     
-    plt.show()
-    return nmse_kf, nmse_kf_std, nmse_danse, nmse_danse_std, nmse_ls, nmse_ls_std, time_elapsed_kf, time_elapsed_danse, snr
+    sys.stdout = orig_stdout
+    #plt.show()
+    return nmse_kf, nmse_kf_std, nmse_danse, nmse_danse_std, nmse_ls, nmse_ls_std, \
+        mse_dB_kf, mse_dB_kf_std, mse_dB_danse, mse_dB_danse_std, mse_dB_ls, mse_dB_ls_std, \
+        time_elapsed_kf, time_elapsed_danse, snr
 
 if __name__ == "__main__":
     device = 'cpu'
+    evaluation_mode = 'Full'
     inverse_r2_dB_arr = np.array([-10.0, 0.0, 10.0, 20.0, 30.0])
     #inverse_r2_dB_arr = np.array([20.0])
     nmse_ls_arr = np.zeros((len(inverse_r2_dB_arr,)))
@@ -243,6 +263,12 @@ if __name__ == "__main__":
     nmse_ls_std_arr = np.zeros((len(inverse_r2_dB_arr,)))
     nmse_kf_std_arr = np.zeros((len(inverse_r2_dB_arr,)))
     nmse_danse_std_arr = np.zeros((len(inverse_r2_dB_arr,)))
+    mse_ls_dB_arr = np.zeros((len(inverse_r2_dB_arr,)))
+    mse_kf_dB_arr = np.zeros((len(inverse_r2_dB_arr,)))
+    mse_danse_dB_arr = np.zeros((len(inverse_r2_dB_arr,)))
+    mse_ls_dB_std_arr = np.zeros((len(inverse_r2_dB_arr,)))
+    mse_kf_dB_std_arr = np.zeros((len(inverse_r2_dB_arr,)))
+    mse_danse_dB_std_arr = np.zeros((len(inverse_r2_dB_arr,)))
     t_kf_arr = np.zeros((len(inverse_r2_dB_arr,)))
     t_danse_arr = np.zeros((len(inverse_r2_dB_arr,)))
     snr_arr = np.zeros((len(inverse_r2_dB_arr,)))
@@ -254,28 +280,47 @@ if __name__ == "__main__":
         "20.0dB":'./models/LinearSSM_danse_gru_m_5_n_5_T_500_N_500_20.0dB_0.0dB/danse_gru_ckpt_epoch_1008_best.pt',
         "30.0dB":'./models/LinearSSM_danse_gru_m_5_n_5_T_500_N_500_30.0dB_0.0dB/danse_gru_ckpt_epoch_371_best.pt'
     }
-
+    
+    T_test = 1000
+    N_test = 100
     test_data_file_dict = {
-        "-10.0dB":"./data/synthetic_data/test_trajectories_m_5_n_5_LinearSSM_data_T_500_N_100_r2_-10.0dB_nu_0.0dB.pkl",
-        "0.0dB":"./data/synthetic_data/test_trajectories_m_5_n_5_LinearSSM_data_T_500_N_100_r2_0.0dB_nu_0.0dB.pkl",
-        "10.0dB":"./data/synthetic_data/test_trajectories_m_5_n_5_LinearSSM_data_T_500_N_100_r2_10.0dB_nu_0.0dB.pkl",
-        "20.0dB":"./data/synthetic_data/test_trajectories_m_5_n_5_LinearSSM_data_T_500_N_100_r2_20.0dB_nu_0.0dB.pkl",
-        "30.0dB":"./data/synthetic_data/test_trajectories_m_5_n_5_LinearSSM_data_T_500_N_100_r2_30.0dB_nu_0.0dB.pkl"
+        "-10.0dB":"./data/synthetic_data/test_trajectories_m_5_n_5_LinearSSM_data_T_{}_N_{}_r2_-10.0dB_nu_0.0dB.pkl".format(T_test, N_test),
+        "0.0dB":"./data/synthetic_data/test_trajectories_m_5_n_5_LinearSSM_data_T_{}_N_{}_r2_0.0dB_nu_0.0dB.pkl".format(T_test, N_test),
+        "10.0dB":"./data/synthetic_data/test_trajectories_m_5_n_5_LinearSSM_data_T_{}_N_{}_r2_10.0dB_nu_0.0dB.pkl".format(T_test, N_test),
+        "20.0dB":"./data/synthetic_data/test_trajectories_m_5_n_5_LinearSSM_data_T_{}_N_{}_r2_20.0dB_nu_0.0dB.pkl".format(T_test, N_test),
+        "30.0dB":"./data/synthetic_data/test_trajectories_m_5_n_5_LinearSSM_data_T_{}_N_{}_r2_30.0dB_nu_0.0dB.pkl".format(T_test, N_test)
     }
 
-    test_logfile = "./log/Linear_test_Partial.log"
-    test_jsonfile = "./log/Linear_test_Partial.json"
+    test_logfile = "./log/Linear_test_{}_T_{}_N_{}.log".format(evaluation_mode, T_test, N_test)
+    test_jsonfile = "./log/Linear_test_{}_T_{}_N_{}.json".format(evaluation_mode, T_test, N_test)
 
     for i, inverse_r2_dB in enumerate(inverse_r2_dB_arr):
         
         model_file_saved_i = model_file_saved_dict['{}dB'.format(inverse_r2_dB)]
         test_data_file_i = test_data_file_dict['{}dB'.format(inverse_r2_dB)]
         
-        nmse_kf_i, nmse_danse_i, nmse_ls_i,  time_elapsed_kf_i, time_elapsed_danse_i, snr_i = test_linear(device=device, 
-            model_file_saved=model_file_saved_i, test_data_file=test_data_file_i)
+        nmse_kf_i, nmse_kf_std_i, nmse_danse_i, nmse_danse_std_i, nmse_ls_i, nmse_ls_std_i, \
+            mse_dB_kf_i, mse_dB_kf_std_i, mse_dB_danse_i, mse_dB_danse_std_i, mse_dB_ls_i, mse_dB_ls_std_i, \
+            time_elapsed_kf_i, time_elapsed_danse_i, snr_i = test_linear(device=device, 
+            model_file_saved=model_file_saved_i, test_data_file=test_data_file_i, test_logfile=test_logfile, evaluation_mode=evaluation_mode)
+        
+        # Store the NMSE values and std devs of the NMSE values
         nmse_ls_arr[i] = nmse_ls_i.numpy().item()
         nmse_kf_arr[i] = nmse_kf_i.numpy().item()
         nmse_danse_arr[i] = nmse_danse_i.numpy().item()
+        nmse_ls_std_arr[i] = nmse_ls_std_i.numpy().item()
+        nmse_kf_std_arr[i] = nmse_kf_std_i.numpy().item()
+        nmse_danse_std_arr[i] = nmse_danse_std_i.numpy().item()
+
+        # Store the MSE values and std devs of the MSE values (in dB)
+        mse_ls_dB_arr[i] = mse_dB_ls_i.numpy().item()
+        mse_kf_dB_arr[i] = mse_dB_kf_i.numpy().item()
+        mse_danse_dB_arr[i] = mse_dB_danse_i.numpy().item()
+        mse_ls_dB_std_arr[i] = mse_dB_ls_std_i.numpy().item()
+        mse_kf_dB_std_arr[i] = mse_dB_kf_std_i.numpy().item()
+        mse_danse_dB_std_arr[i] = mse_dB_danse_std_i.numpy().item()
+
+        # Store the inference times 
         t_kf_arr[i] = time_elapsed_kf_i
         t_danse_arr[i] = time_elapsed_danse_i
         snr_arr[i] = 10*np.log10(snr_i.numpy().item())
@@ -285,10 +330,16 @@ if __name__ == "__main__":
     test_stats['DANSE_mean_nmse'] = nmse_danse_arr
     test_stats['KF_std_nmse'] = nmse_kf_std_arr
     test_stats['DANSE_std_nmse'] = nmse_danse_std_arr
-    test_stats['KF_time'] = t_kf_arr
-    test_stats['DANSE_time'] = t_danse_arr
+    test_stats['KF_mean_mse'] = mse_kf_dB_arr
+    test_stats['DANSE_mean_mse'] = mse_danse_dB_arr
+    test_stats['KF_std_mse'] = mse_kf_dB_std_arr
+    test_stats['DANSE_std_mse'] = mse_danse_dB_std_arr
+    test_stats['LS_mean_mse'] = mse_ls_dB_arr
+    test_stats['LS_std_mse'] = mse_ls_dB_std_arr
     test_stats['LS_mean_nmse'] = nmse_ls_arr
     test_stats['LS_std_nmse'] = nmse_ls_std_arr
+    test_stats['KF_time'] = t_kf_arr
+    test_stats['DANSE_time'] = t_danse_arr
     test_stats['SNR'] = snr_arr
 
     with open(test_jsonfile, 'w') as f:
@@ -305,7 +356,7 @@ if __name__ == "__main__":
     plt.grid(True)
     plt.legend()
     #plt.subplot(212)
-    plt.savefig('./figs/LinearModel/Full/NMSE_vs_inverse_r2dB_Linear.pdf')
+    plt.savefig('./figs/LinearModel/{}/NMSE_vs_inverse_r2dB_Linear.pdf'.format(evaluation_mode))
 
     plt.figure()
     plt.plot(snr_arr, nmse_ls_arr, 'gp--', linewidth=1.5, label="NMSE-LS")
@@ -315,7 +366,30 @@ if __name__ == "__main__":
     plt.ylabel('NMSE (in dB)')
     plt.grid(True)
     plt.legend()
-    plt.savefig('./figs/LinearModel/Full/NMSE_vs_SNR_Linear.pdf')
+    plt.savefig('./figs/LinearModel/{}/NMSE_vs_SNR_Linear.pdf'.format(evaluation_mode))
+    
+    # Plotting the MSE Curve
+    plt.rcParams['font.family'] = 'serif'
+    plt.figure()
+    plt.plot(inverse_r2_dB_arr, mse_ls_dB_arr, 'gp--', linewidth=1.5, label="MSE-LS")
+    plt.plot(inverse_r2_dB_arr, mse_kf_dB_arr, 'rd--', linewidth=1.5, label="MSE-KF")
+    plt.plot(inverse_r2_dB_arr, mse_danse_dB_arr, 'bo-', linewidth=2.0, label="MSE-DANSE")
+    plt.xlabel('$\\frac{1}{r^2}$ (in dB)')
+    plt.ylabel('MSE (in dB)')
+    plt.grid(True)
+    plt.legend()
+    #plt.subplot(212)
+    plt.savefig('./figs/LinearModel/{}/MSE_vs_inverse_r2dB_Linear.pdf'.format(evaluation_mode))
+
+    plt.figure()
+    plt.plot(snr_arr, mse_ls_dB_arr, 'gp--', linewidth=1.5, label="MSE-LS")
+    plt.plot(snr_arr, mse_kf_dB_arr, 'rd--', linewidth=1.5, label="MSE-KF")
+    plt.plot(snr_arr, mse_danse_dB_arr, 'bo-', linewidth=2.0, label="MSE-DANSE")
+    plt.xlabel('SNR (in dB)')
+    plt.ylabel('MSE (in dB)')
+    plt.grid(True)
+    plt.legend()
+    plt.savefig('./figs/LinearModel/{}/MSE_vs_SNR_Linear.pdf'.format(evaluation_mode))
 
     # Plotting the Time-elapsed Curve
     plt.figure()
@@ -326,7 +400,7 @@ if __name__ == "__main__":
     plt.ylabel('Time (in s)')
     plt.grid(True)
     plt.legend()
-    plt.savefig('./figs/LinearModel/Full/InferTime_vs_inverse_r2dB_Linear.pdf')
+    plt.savefig('./figs/LinearModel/{}/InferTime_vs_inverse_r2dB_Linear.pdf'.format(evaluation_mode))
 
     #plt.subplot(212)
     plt.figure()
@@ -336,6 +410,6 @@ if __name__ == "__main__":
     plt.ylabel('Time (in s)')
     plt.grid(True)
     plt.legend()
-    plt.savefig('./figs/LinearModel/Full/InferTime_vs_SNR_Linear.pdf')
+    plt.savefig('./figs/LinearModel/{}/InferTime_vs_SNR_Linear.pdf'.format(evaluation_mode))
 
     plt.show()

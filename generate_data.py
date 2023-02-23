@@ -23,8 +23,8 @@ def initialize_model(type_, parameters):
                         H=parameters["H"],
                         mu_e=parameters["mu_e"],
                         mu_w=parameters["mu_w"],
-                        q=parameters["q"],
-                        r=parameters["r"],
+                        q2=parameters["q2"],
+                        r2=parameters["r2"],
                         Q=parameters["Q"],
                         R=parameters["R"])
 

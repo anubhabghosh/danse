@@ -17,22 +17,23 @@ from torch.utils.data import DataLoader, Dataset
 from utils.utils import load_saved_dataset, Series_Dataset, obtain_tr_val_test_idx, create_splits_file_name, \
     create_file_paths, check_if_dir_or_file_exists, load_splits_file, get_dataloaders, NDArrayEncoder
 # Import the parameters
-from parameters import get_parameters, get_H_DANSE
+from parameters import get_parameters, J_test, delta_t_test, delta_t, J_gen, A_fn, h_fn, f_lorenz_danse
+from ssm_models import *
 #from utils.plot_functions import plot_measurement_data, plot_measurement_data_axes, plot_state_trajectory, plot_state_trajectory_axes
 
 # Import estimator model and functions
-from src.danse import DANSE, train_danse, test_danse
+from src.k_net import KalmanNetNN, train_KalmanNetNN, test_KalmanNetNN
 
 def main():
 
     usage = "Train DANSE using trajectories of SSMs \n"\
-        "python3.8 main_danse.py --mode [train/test] --model_type [gru/lstm/rnn] --dataset_mode [LinearSSM/LorenzSSM] \n"\
+        "python3.8 main_kalmannet.py --mode [train/test] --knet_model_type [gru/lstm/rnn] --dataset_mode [LinearSSM/LorenzSSM] \n"\
         "--datafile [fullpath to datafile] --splits [fullpath to splits file]"
     
     parser = argparse.ArgumentParser(description="Input a string indicating the mode of the script \n"\
         "train - training and testing is done, test-only evlaution is carried out")
     parser.add_argument("--mode", help="Enter the desired mode", type=str)
-    parser.add_argument("--rnn_model_type", help="Enter the desired model (rnn/lstm/gru)", type=str)
+    parser.add_argument("--knet_model_type", help="Enter the desired model (default: KNetUoffline)", type=str)
     parser.add_argument("--dataset_type", help="Enter the type of dataset (pfixed/vars/all)", type=str)
     parser.add_argument("--model_file_saved", help="In case of testing mode, Enter the desired model checkpoint with full path (gru/lstm/rnn)", type=str, default=None)
     parser.add_argument("--datafile", help="Enter the full path to the dataset", type=str)
@@ -40,7 +41,7 @@ def main():
     
     args = parser.parse_args() 
     mode = args.mode
-    model_type = args.rnn_model_type
+    knet_model_type = args.knet_model_type # For unsupervised, we need this to be: "KNetUoffline"
     datafile = args.datafile
     dataset_type = args.dataset_type
     datafolder = "".join(datafile.split("/")[i]+"/" for i in range(len(datafile.split("/")) - 1))
@@ -50,11 +51,13 @@ def main():
     print("datafile: {}".format(datafile))
     print(datafile.split('/')[-1])
     # Dataset parameters obtained from the 'datafile' variable
-    _, n_states, n_obs, _, T, N_samples, inverse_r2_dB, nu_dB = parse("{}_m_{:d}_n_{:d}_{}_data_T_{:d}_N_{:d}_r2_{:f}dB_nu_{:f}dB.pkl", datafile.split('/')[-1])
+    _, n_states, n_obs, ssm_type, T, N_samples, inverse_r2_dB, nu_dB = parse("{}_m_{:d}_n_{:d}_{}_data_T_{:d}_N_{:d}_r2_{:f}dB_nu_{:f}dB.pkl", datafile.split('/')[-1])
     
     ngpu = 1 # Comment this out if you want to run on cpu and the next line just set device to "cpu"
     device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu>0) else "cpu")
     print("Device Used:{}".format(device))
+
+
 
     ssm_parameters_dict, est_parameters_dict = get_parameters(
                                             N=N_samples,
@@ -66,10 +69,11 @@ def main():
                                             device=device
                                         )
 
-    batch_size = est_parameters_dict["danse"]["batch_size"] # Set the batch size
-    estimator_options = est_parameters_dict["danse"] # Get the options for the estimator
-    estimator_options['H'] = get_H_DANSE(type_=dataset_type, n_states=n_states, n_obs=n_obs)
-
+    batch_size = est_parameters_dict[knet_model_type]["batch_size"] # Set the batch size
+    estimator_options = est_parameters_dict[knet_model_type] # Get the options for the estimator
+    val_batch_size = estimator_options["N_CV"]
+    te_batch_size = estimator_options["N_T"]
+    
     if not os.path.isfile(datafile):
         
         print("Dataset is not present, run 'generate_data.py / run_generate_data.sh' to create the dataset")
@@ -83,8 +87,8 @@ def main():
 
     if not os.path.isfile(splits_file):
         tr_indices, val_indices, test_indices = obtain_tr_val_test_idx(dataset=Z_XY_dataset,
-                                                                    tr_to_test_split=0.9,
-                                                                    tr_to_val_split=0.833)
+                                                                    tr_to_test_split=0.66667,
+                                                                    tr_to_val_split=0.5)
         print(len(tr_indices), len(val_indices), len(test_indices))
         splits = {}
         splits["train"] = tr_indices
@@ -106,7 +110,9 @@ def main():
                                                             batch_size=batch_size, 
                                                             tr_indices=tr_indices, 
                                                             val_indices=val_indices, 
-                                                            test_indices=test_indices)
+                                                            test_indices=test_indices, 
+                                                            val_batch_size=val_batch_size,
+                                                            te_batch_size=te_batch_size)
 
     print("No. of training, validation and testing batches: {}, {}, {}".format(len(train_loader), 
                                                                                 len(val_loader), 
@@ -120,9 +126,9 @@ def main():
     modelfile_path = "./models/"
 
     #NOTE: Currently this is hardcoded into the system
-    main_exp_name = "{}_danse_{}_m_{}_n_{}_T_{}_N_{}_{}dB_{}dB".format(
+    main_exp_name = "{}_{}_m_{}_n_{}_T_{}_N_{}_{}dB_{}dB".format(
                                                             dataset_type,
-                                                            model_type,
+                                                            knet_model_type,
                                                             n_states,
                                                             n_obs,
                                                             T,
@@ -160,24 +166,62 @@ def main():
     
     modelfile_path = os.path.join(modelfile_path, main_exp_name) # Modify the modelfile path to add full model file 
     
-    if mode.lower() == "train":
+    if ssm_type == "LinearSSM":
+        ssm_model = LinearSSM(n_states=n_states, n_obs=n_obs, F=None, G=np.zeros((n_states,1)), H=None, 
+                        mu_e=np.zeros((n_states,)), mu_w=np.zeros((n_obs,)), q2=1.0, r2=1.0, 
+                        Q=None, R=None)
+        def fn(x):
+            return torch.from_numpy(ssm_model.F).type(torch.FloatTensor) @ x
+        
+        def hn(x):
+            return torch.from_numpy(ssm_model.H).type(torch.FloatTensor) @ x
 
-        model_danse = DANSE(**estimator_options)
-        tr_verbose = True  
+    elif ssm_type == "LorenzSSM":
+        ssm_model = LorenzAttractorModel(d=n_states,
+                                        J=J_gen, 
+                                        delta=delta_t,
+                                        delta_d=delta_t,
+                                        A_fn=A_fn,
+                                        h_fn=h_fn, 
+                                        decimate=False,
+                                        mu_e=np.zeros((n_states,)),
+                                        mu_w=np.zeros((n_obs,)),
+                                        use_Taylor=ssm_parameters_dict[ssm_type]["use_Taylor"])
+
+        def fn(x):
+            return f_lorenz_danse(x)
+        
+        def hn(x):
+            return h_fn(x)
+            
+    if mode.lower() == "train": 
+
+        #model_danse = DANSE(**estimator_options)
+        model_knet = KalmanNetNN(
+            n_states=estimator_options["n_states"],
+            n_obs=estimator_options["n_obs"],
+            n_layers=estimator_options["n_layers"],
+            device=device)
+        
+        model_knet.Build(f=fn, h=hn)
+        model_knet.ssModel = ssm_model
+        tr_verbose = True
         
         # Starting model training
-        tr_losses, val_losses, _, _, _ = train_danse(
-            model=model_danse,
+        tr_losses, val_losses, _ = train_KalmanNetNN(
+            model=model_knet,
+            options=estimator_options,
             train_loader=train_loader,
             val_loader=val_loader,
-            options=estimator_options,
-            nepochs=model_danse.rnn.num_epochs,
+            nepochs=estimator_options["num_epochs"],
             logfile_path=tr_logfile_name_with_path,
             modelfile_path=modelfile_path,
-            save_chkpoints="some",
+            save_chkpoints='some',
             device=device,
-            tr_verbose=tr_verbose
+            tr_verbose=tr_verbose,
+            unsupervised=estimator_options["unsupervised"]
         )
+        
         #if tr_verbose == True:
         #    plot_losses(tr_losses=tr_losses, val_losses=val_losses, logscale=False)
             
@@ -186,20 +230,28 @@ def main():
         losses_model["val_losses"] = val_losses
 
         with open(os.path.join(os.path.join(logfile_path, main_exp_name), 
-            'danse_{}_losses_eps{}.json'.format(estimator_options['rnn_type'], 
-            estimator_options['rnn_params_dict'][model_type]['num_epochs'])), 'w') as f:
+            '{}_gru_losses_eps{}.json'.format(knet_model_type, estimator_options["num_epochs"])), 'w') as f:
             f.write(json.dumps(losses_model, cls=NDArrayEncoder, indent=2))
 
     elif mode.lower() == "test":
-
-        #model_file_saved = "./model_checkpoints/{}_usenorm_{}_ckpt_epoch_{}.pt".format(model_type, usenorm_flag, epoch_test)
-        te_loss = test_danse(
+        
+        #model_danse = DANSE(**estimator_options)
+        model_knet_test = KalmanNetNN(
+            n_states=estimator_options["n_states"],
+            n_obs=estimator_options["n_obs"],
+            n_layers=estimator_options["n_layers"],
+            device=device)
+        model_knet.Build(f=fn, h=hn)
+        model_knet.ssModel = ssm_model
+        
+        te_loss, _, _ = test_KalmanNetNN(
+            model_test=model_knet_test,
             test_loader=test_loader,
             options=estimator_options,
             device=device,
             model_file=model_file_saved,
             test_logfile_path=te_logfile_name_with_path
-            )
+        )
     
     return None
 

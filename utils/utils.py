@@ -15,6 +15,13 @@ def lin_to_dB(x):
     assert x != 0, "X is zero"
     return 10*np.log10(x)
 
+def partial_corrupt(x, p=0.7, bias=0.0):
+
+    if x < 0:
+        p *= -1
+    #return np.random.uniform(x, x*(1+p)) + bias
+    return x*(1+p)
+
 def generate_normal(N, mean, Sigma2):
 
     # n = N(mean, std**2)
@@ -34,12 +41,12 @@ def count_params(model):
     return total_num_params, total_num_trainable_params
 
 def mse_loss(x, xhat):
-    loss = nn.MSELoss(reduction='mean')
+    loss = nn.MSELoss(reduction='none')
     return loss(xhat, x)
 
 def mse_loss_dB(x, xhat):
-    noise_p = mse_loss(xhat, x) 
-    return 10*torch.log10(noise_p)
+    noise_p = mse_loss(xhat, x).mean((1,2))
+    return 10*torch.log10(noise_p).mean()
 
 def nmse_loss(x, xhat):
     #loss = nn.MSELoss(reduction='mean')
@@ -52,12 +59,12 @@ def nmse_loss_std(x, xhat):
     loss = nn.MSELoss(reduction='none')
     noise_p = loss(xhat, x)
     signal_p = loss(x, torch.zeros_like(x))
-    return 10*torch.log10(noise_p.mean((1,2)).std().abs()) - 10*torch.log10(signal_p.mean((1,2)).std().abs())
+    return (10*torch.log10(noise_p.mean((1,2))) - 10*torch.log10(signal_p.mean((1,2)))).std()
 
 def mse_loss_dB_std(x, xhat):
     loss = nn.MSELoss(reduction='none')
-    noise_p = loss(xhat, x)
-    return 10*torch.log10(noise_p.mean((1,2)).std().abs())
+    noise_p = loss(xhat, x).mean((1,2))
+    return (10*torch.log10(noise_p)).std()
 
 def get_mvnpdf(mean, cov):
 
@@ -142,7 +149,7 @@ def my_collate_fn(batch):
     inputs = torch.from_numpy(np.row_stack(inputs))
     return (inputs, targets)
 
-def get_dataloaders(dataset, batch_size, tr_indices, val_indices, test_indices=None):
+def get_dataloaders(dataset, batch_size, tr_indices, val_indices, test_indices=None, val_batch_size=None, te_batch_size=None):
 
     train_loader = DataLoader(dataset,
                             batch_size=batch_size,
@@ -150,17 +157,31 @@ def get_dataloaders(dataset, batch_size, tr_indices, val_indices, test_indices=N
                             num_workers=0,
                             collate_fn=my_collate_fn)
 
-    val_loader = DataLoader(dataset,
-                            batch_size=batch_size,
-                            sampler=torch.utils.data.SubsetRandomSampler(val_indices),
-                            num_workers=0,
-                            collate_fn=my_collate_fn)
+    if val_batch_size is None:
+        val_loader = DataLoader(dataset,
+                                batch_size=batch_size,
+                                sampler=torch.utils.data.SubsetRandomSampler(val_indices),
+                                num_workers=0,
+                                collate_fn=my_collate_fn)
+    else:
+        val_loader = DataLoader(dataset,
+                                batch_size=val_batch_size,
+                                sampler=torch.utils.data.SubsetRandomSampler(val_indices),
+                                num_workers=0,
+                                collate_fn=my_collate_fn)
     
-    test_loader = DataLoader(dataset,
-                            batch_size=batch_size,
-                            sampler=torch.utils.data.SubsetRandomSampler(test_indices),
-                            num_workers=0,
-                            collate_fn=my_collate_fn)
+    if te_batch_size is None:
+        test_loader = DataLoader(dataset,
+                                batch_size=batch_size,
+                                sampler=torch.utils.data.SubsetRandomSampler(test_indices),
+                                num_workers=0,
+                                collate_fn=my_collate_fn)
+    else:
+        test_loader = DataLoader(dataset,
+                                batch_size=te_batch_size,
+                                sampler=torch.utils.data.SubsetRandomSampler(test_indices),
+                                num_workers=0,
+                                collate_fn=my_collate_fn)
 
     return train_loader, val_loader, test_loader
 

@@ -2,13 +2,16 @@
 import numpy as np
 import math
 import torch
-from utils.utils import dB_to_lin
+from utils.utils import dB_to_lin, partial_corrupt
 from ssm_models import LinearSSM
 import torch
 from torch.autograd.functional import jacobian
 
 torch.manual_seed(10)
 delta_t = 0.02 # Hardcoded for now
+delta_t_test = 0.04 # Hardcoded for now
+J_gen = 5 
+J_test = 5 # hardcoded for now
 
 def A_fn(z):
     return np.array([
@@ -20,6 +23,8 @@ def A_fn(z):
 def h_fn(z):
     return z
 
+"""
+# The KalmanNet implementation
 def f_lorenz(x):
 
     B = torch.Tensor([[[0,  0, 0],[0, 0, -1],[0,  1, 0]], torch.zeros(3,3), torch.zeros(3,3)]).type(torch.FloatTensor)
@@ -31,9 +36,66 @@ def f_lorenz(x):
     A = (torch.add(torch.reshape(torch.matmul(B, x),(3,3)).T,C))
     # Taylor Expansion for F    
     F = torch.eye(3)
-    J = 5
+    J = J_test
     for j in range(1,J+1):
         F_add = (torch.matrix_power(A*delta_t, j)/math.factorial(j))
+        F = torch.add(F, F_add)
+    return torch.matmul(F, x)
+"""
+
+def f_lorenz_danse_test_ukf(x, dt):
+
+    x = torch.from_numpy(x).type(torch.FloatTensor)
+    B = torch.Tensor([[[0,  0, 0],[0, 0, -1],[0,  1, 0]], torch.zeros(3,3), torch.zeros(3,3)]).type(torch.FloatTensor)
+    C = torch.Tensor([[-10, 10,    0],
+                    [ 28, -1,    0],
+                    [  0,  0, -8/3]]).type(torch.FloatTensor)
+    #A = torch.add(torch.einsum('nhw,wa->nh', B, x).T,C)
+    A = torch.einsum('kn,nij->ij',x.reshape((1,-1)),B) 
+    #A = torch.reshape(torch.matmul(B, x),(3,3)).T # For KalmanNet
+    A += C
+    #delta = delta_t # Hardcoded for now
+    # Taylor Expansion for F    
+    F = torch.eye(3)
+    J = J_test # Hardcoded for now
+    for j in range(1,J+1):
+        F_add = (torch.matrix_power(A*delta_t_test, j)/math.factorial(j))
+        F = torch.add(F, F_add)
+    return torch.matmul(F, x).numpy()
+
+def f_lorenz_danse_ukf(x, dt):
+
+    x = torch.from_numpy(x).type(torch.FloatTensor)
+    B = torch.Tensor([[[0,  0, 0],[0, 0, -1],[0,  1, 0]], torch.zeros(3,3), torch.zeros(3,3)]).type(torch.FloatTensor)
+    C = torch.Tensor([[-10, 10,    0],
+                    [ 28, -1,    0],
+                    [  0,  0, -8/3]]).type(torch.FloatTensor)
+    #A = torch.add(torch.einsum('nhw,wa->nh', B, x).T,C)
+    A = torch.einsum('kn,nij->ij',x.reshape((1,-1)),B) 
+    #A = torch.reshape(torch.matmul(B, x),(3,3)).T # For KalmanNet
+    A += C
+    #delta = delta_t # Hardcoded for now
+    # Taylor Expansion for F    
+    F = torch.eye(3)
+    J = J_test # Hardcoded for now
+    for j in range(1,J+1):
+        F_add = (torch.matrix_power(A*delta_t, j)/math.factorial(j))
+        F = torch.add(F, F_add)
+    return torch.matmul(F, x).numpy()
+    
+def f_lorenz_danse_test(x):
+
+    B = torch.Tensor([[[0,  0, 0],[0, 0, -1],[0,  1, 0]], torch.zeros(3,3), torch.zeros(3,3)]).type(torch.FloatTensor)
+    C = torch.Tensor([[-10, 10,    0],
+                    [ 28, -1,    0],
+                    [  0,  0, -8/3]]).type(torch.FloatTensor)
+    A = torch.einsum('kn,nij->ij',x.reshape((1,-1)),B) + C
+    #delta_t = 0.02 # Hardcoded for now
+    # Taylor Expansion for F    
+    F = torch.eye(3)
+    J = J_test # Hardcoded for now
+    for j in range(1,J+1):
+        F_add = (torch.matrix_power(A*delta_t_test, j)/math.factorial(j))
         F = torch.add(F, F_add)
     return torch.matmul(F, x)
 
@@ -47,14 +109,14 @@ def f_lorenz_danse(x):
     #delta_t = 0.02 # Hardcoded for now
     # Taylor Expansion for F    
     F = torch.eye(3)
-    J = 2 # Hardcoded for now
+    J = J_test # Hardcoded for now
     for j in range(1,J+1):
         F_add = (torch.matrix_power(A*delta_t, j)/math.factorial(j))
         F = torch.add(F, F_add)
     return torch.matmul(F, x)
 
 def f_sinssm_fn(z, alpha=0.9, beta=1.1, phi=0.1*math.pi, delta=0.01):
-    return alpha * (beta * z + phi) + delta
+    return alpha * torch.sin(beta * z + phi) + delta
 
 def h_sinssm_fn(z, a=1, b=1, c=0):
     return a * (b * z + c)
@@ -101,7 +163,7 @@ def get_parameters(N=1000, T=100, n_states=5, n_obs=5, q2=1.0, r2=1.0,
         "LorenzSSM":{
             "n_states":n_states,
             "n_obs":n_obs,
-            "J":5,
+            "J":J_gen,
             "delta":delta_t,
             "A_fn":A_fn,
             "h_fn":h_fn,
@@ -199,6 +261,23 @@ def get_parameters(N=1000, T=100, n_states=5, n_obs=5, q2=1.0, r2=1.0,
             "n_sigma":n_states*2,
             "kappa":0.0,
             "alpha":1e-3
+        },
+        "KNetUoffline":{
+            "n_states":n_states,
+            "n_obs":n_obs,
+            "n_layers":1,
+            "N_E":10_0,
+            "N_CV":100,
+            "N_T":10_0,
+            "unsupervised":True,
+            "data_file_specification":'Ratio_{}---R_{}---T_{}',
+            "model_file_specification":'Ratio_{}---R_{}---T_{}---unsupervised_{}',
+            "nu_dB":0.0,
+            "lr":1e-3,
+            "weight_decay":1e-6,
+            "num_epochs":500,
+            "batch_size":100,
+            "device":device
         }
     }
 

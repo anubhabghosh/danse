@@ -213,7 +213,7 @@ class SinusoidalSSM(object):
         
         self.init_noise_covs()
 
-        print("Measurement variance: {}, Process variance: {}".format(r2, q2))
+        #print("Measurement variance: {}, Process variance: {}".format(r2, q2))
         
         e = np.random.multivariate_normal(np.zeros(self.n_states,), q2*np.eye(self.n_states),size=(T+1,))
         v = np.random.multivariate_normal(np.zeros(self.n_obs,), r2*np.eye(self.n_obs),size=(T,))

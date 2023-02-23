@@ -10,14 +10,15 @@ from torch.autograd.functional import jacobian
 from parse import parse
 from timeit import default_timer as timer
 import json
+import tikzplotlib
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 from utils.plot_functions import *
 from utils.utils import generate_normal, dB_to_lin, lin_to_dB, mse_loss, nmse_loss, \
-    mse_loss_dB, load_saved_dataset, save_dataset, nmse_loss_std, mse_loss_dB_std, NDArrayEncoder
-from parameters import get_parameters, A_fn, h_fn, f_lorenz, f_lorenz_danse, delta_t
+    mse_loss_dB, load_saved_dataset, save_dataset, nmse_loss_std, mse_loss_dB_std, NDArrayEncoder, partial_corrupt
+from parameters import get_parameters, A_fn, h_fn, f_lorenz, f_lorenz_danse, delta_t, J_test
 from generate_data import LorenzAttractorModel, generate_SSM_data
 from src.ekf import EKF
 from src.ukf import UKF
@@ -68,7 +69,7 @@ def get_test_sequence(lorenz_model, T, inverse_r2_dB, nu_dB):
 
     return x_lorenz, y_lorenz
 
-def test_lorenz(device='cpu', model_file_saved=None, test_data_file=None, test_logfile=None, X=None, Y=None, q_available=None, r_available=None):
+def test_lorenz(device='cpu', model_file_saved=None, test_data_file=None, test_logfile=None, evaluation_mode='Full', X=None, Y=None, q_available=None, r_available=None):
 
     _, rnn_type, m, n, T, _, inverse_r2_dB, nu_dB = parse("{}_danse_{}_m_{:d}_n_{:d}_T_{:d}_N_{:d}_{:f}dB_{:f}dB", model_file_saved.split('/')[-2])
     d = m
@@ -84,14 +85,14 @@ def test_lorenz(device='cpu', model_file_saved=None, test_data_file=None, test_l
     use_Taylor = False 
 
     orig_stdout = sys.stdout
-    f_tmp = open(test_logfile, 'a')
-    sys.stdout = f_tmp
+    #f_tmp = open(test_logfile, 'a')
+    #sys.stdout = f_tmp
 
     if not os.path.isfile(test_data_file):
         
         print('Dataset is not present, creating at {}'.format(test_data_file))
         # My own data generation scheme
-        m, n, T_test, N_test, inverse_r2_dB_test, nu_dB_test = parse("test_trajectories_m_{:d}_n_{:d}_LorenzSSM_data_T_{:d}_N_{:d}_r2_{:f}dB_nu_{:f}dB.pkl", test_data_file.split('/')[-1])
+        evaluation_mode, m, n, T_test, N_test, inverse_r2_dB_test, nu_dB_test = parse("test_trajectories_{}_m_{:d}_n_{:d}_LorenzSSM_data_T_{:d}_N_{:d}_r2_{:f}dB_nu_{:f}dB.pkl", test_data_file.split('/')[-1])
         #N_test = 100 # No. of trajectories at test time / evaluation
         X = torch.zeros((N_test, T_test+1, m))
         Y = torch.zeros((N_test, T_test, n))
@@ -117,7 +118,7 @@ def test_lorenz(device='cpu', model_file_saved=None, test_data_file=None, test_l
     else:
 
         print("Dataset at {} already present!".format(test_data_file))
-        m, n, T_test, N_test, inverse_r2_dB_test, nu_dB_test = parse("test_trajectories_m_{:d}_n_{:d}_LorenzSSM_data_T_{:d}_N_{:d}_r2_{:f}dB_nu_{:f}dB.pkl", test_data_file.split('/')[-1])
+        evaluation_mode, m, n, T_test, N_test, inverse_r2_dB_test, nu_dB_test = parse("test_trajectories_{}_m_{:d}_n_{:d}_LorenzSSM_data_T_{:d}_N_{:d}_r2_{:f}dB_nu_{:f}dB.pkl", test_data_file.split('/')[-1])
         test_data_dict = load_saved_dataset(filename=test_data_file)
         X = test_data_dict["X"]
         Y = test_data_dict["Y"]
@@ -129,9 +130,9 @@ def test_lorenz(device='cpu', model_file_saved=None, test_data_file=None, test_l
     print("1/r2: {}dB, nu: {}dB".format(inverse_r2_dB_test, nu_dB_test))
     print("1/r2: {}dB, nu: {}dB".format(inverse_r2_dB_test, nu_dB_test), file=orig_stdout)
     #print(i_test)
-    #Y = Y[:5]
-    #X = X[:5]
-    
+    Y = Y[:2]
+    X = X[:2]
+
     N_test, Ty, dy = Y.shape
     N_test, Tx, dx = X.shape
 
@@ -139,6 +140,19 @@ def test_lorenz(device='cpu', model_file_saved=None, test_data_file=None, test_l
     H_tensor = torch.from_numpy(jacobian(h_fn, torch.randn(lorenz_model.n_states,)).numpy()).type(torch.FloatTensor)
     H_tensor = torch.repeat_interleave(H_tensor.unsqueeze(0),N_test,dim=0)
     X_LS = torch.einsum('ijj,ikj->ikj',torch.pinverse(H_tensor),Y)
+
+    if "Partial" in evaluation_mode:
+        if "low" in evaluation_mode:
+            p = -0.5
+        elif "high" in evaluation_mode:
+            p = 0.5
+        nu_dB_test = partial_corrupt((nu_dB_test), p=p, bias=10.0) # 50 % corruption of the true nu_dB used for data generation
+        
+    print("Fed to Model-based filters: ", file=orig_stdout)
+    print("1/r2: {}dB, nu: {}dB, delta_t: {}".format(inverse_r2_dB_test, nu_dB_test, delta_t), file=orig_stdout)
+
+    print("Fed to Model-based filters: ")
+    print("1/r2: {}dB, nu: {}dB, delta_t: {}".format(inverse_r2_dB_test, nu_dB_test, delta_t))
 
     # Initialize the extended Kalman filter model in PyTorch
     
@@ -148,8 +162,9 @@ def test_lorenz(device='cpu', model_file_saved=None, test_data_file=None, test_l
         J=J_test,
         f=f_lorenz_danse,#lorenz_model.A_fn, f_lorenz for KalmanNet paper, f_lorenz_danse for our work
         h=lorenz_model.h_fn,
-        Q=lorenz_model.Q, #For KalmanNet
-        R=lorenz_model.R, # For KalmanNet
+        delta=lorenz_model.delta,
+        Q=None, #For KalmanNet
+        R=None, # For KalmanNet
         inverse_r2_dB=inverse_r2_dB_test,
         nu_dB=nu_dB_test,
         device=device,
@@ -171,8 +186,8 @@ def test_lorenz(device='cpu', model_file_saved=None, test_data_file=None, test_l
         n_obs=lorenz_model.n_obs,
         f=None,
         h=lorenz_model.h_fn,
-        Q=lorenz_model.Q, # For KalmanNet, else None
-        R=lorenz_model.R, # For KalmanNet, else None,
+        Q=None, # For KalmanNet, else None
+        R=None, # For KalmanNet, else None,
         kappa=-1, # Usually kept 0
         alpha=0.1, # Usually small 1e-3
         delta_t=lorenz_model.delta,
@@ -250,7 +265,7 @@ def test_lorenz(device='cpu', model_file_saved=None, test_data_file=None, test_l
     print("DANSE - MSE LOSS:",mse_dB_danse, "[dB]")
     print("DANSE - MSE STD:", mse_dB_danse_std, "[dB]")
 
-    snr = mse_loss(X[:,1:,:], torch.zeros_like(X[:,1:,:])) * dB_to_lin(inverse_r2_dB_test)
+    snr = mse_loss(X[:,1:,:], torch.zeros_like(X[:,1:,:])).mean() * dB_to_lin(inverse_r2_dB_test)
 
     print("LS, batch size: {}, nmse: {:.4f} ± {:.4f}[dB], mse: {:.4f} ± {:.4f}[dB]".format(N_test, nmse_ls, nmse_ls_std, mse_dB_ls, mse_dB_ls_std))
     print("ekf, batch size: {}, nmse: {:.4f} ± {:.4f}[dB], mse: {:.4f} ± {:.4f}[dB], time: {:.4f} secs".format(N_test, nmse_ekf, nmse_ekf_std, mse_dB_ekf, mse_dB_ekf_std, time_elapsed_ekf))
@@ -271,24 +286,28 @@ def test_lorenz(device='cpu', model_file_saved=None, test_data_file=None, test_l
                                 X_est_UKF=torch.squeeze(X_estimated_ukf[0,1:,:],0), 
                                 X_est_DANSE=torch.squeeze(X_estimated_filtered[0],0), 
                                 savefig=True,
-                                savefig_name="./figs/LorenzModel/Partial/AxesWisePlot_r2_{}dB_nu_{}dB.pdf".format(inverse_r2_dB_test, nu_dB_test))
+                                savefig_name="./figs/LorenzModel/{}/AxesWisePlot_r2_{}dB_nu_{}dB.pdf".format(evaluation_mode, inverse_r2_dB_test, nu_dB_test))
+    
     plot_state_trajectory(X=torch.squeeze(X[0,1:,:],0), 
                         X_est_EKF=torch.squeeze(X_estimated_ekf[0,1:,:],0), 
                         X_est_UKF=torch.squeeze(X_estimated_ukf[0,1:,:],0), 
                         X_est_DANSE=torch.squeeze(X_estimated_filtered[0],0),
                         savefig=True,
-                        savefig_name="./figs/LorenzModel/Partial/3dPlot_r2_{}dB_nu_{}dB.pdf".format(inverse_r2_dB_test, nu_dB_test))
+                        savefig_name="./figs/LorenzModel/{}/3dPlot_r2_{}dB_nu_{}dB.pdf".format(evaluation_mode, inverse_r2_dB_test, nu_dB_test))
     #plot_state_trajectory_axes(X=torch.squeeze(X,0), X_est_EKF=torch.squeeze(X_estimated_ekf,0), X_est_DANSE=torch.squeeze(X_estimated_filtered,0))
     #plot_state_trajectory(X=torch.squeeze(X,0), X_est_EKF=torch.squeeze(X_estimated_ekf,0), X_est_DANSE=torch.squeeze(X_estimated_filtered,0))
     
     #plt.show()
-    sys.stdout = orig_stdout
-    return nmse_ekf, nmse_ekf_std, nmse_danse, nmse_danse_std, nmse_ukf, nmse_ukf_std, nmse_ls, nmse_ls_std, time_elapsed_ekf, time_elapsed_danse, time_elapsed_ukf, snr
+    #sys.stdout = orig_stdout
+    return nmse_ekf, nmse_ekf_std, nmse_danse, nmse_danse_std, nmse_ukf, nmse_ukf_std, nmse_ls, nmse_ls_std, \
+        mse_dB_ekf, mse_dB_ekf_std, mse_dB_danse, mse_dB_danse_std, mse_dB_ukf, mse_dB_ukf_std, mse_dB_ls, mse_dB_ls_std, \
+        time_elapsed_ekf, time_elapsed_danse, time_elapsed_ukf, snr
 
 if __name__ == "__main__":
 
+    evaluation_mode = "Partial_high"
     device = 'cpu'
-    inverse_r2_dB_arr = np.array([-10.0, 0.0, 10.0, 20.0, 30.0])
+    inverse_r2_dB_arr = np.array([-25.0, -20.0, -10.0, 0.0, 10.0, 20.0, 30.0, 40.0])
     #inverse_r2_dB_arr = np.array([20.0])
     nmse_ls_arr = np.zeros((len(inverse_r2_dB_arr,)))
     nmse_ekf_arr = np.zeros((len(inverse_r2_dB_arr,)))
@@ -298,37 +317,58 @@ if __name__ == "__main__":
     nmse_ekf_std_arr = np.zeros((len(inverse_r2_dB_arr,)))
     nmse_ukf_std_arr = np.zeros((len(inverse_r2_dB_arr,)))
     nmse_danse_std_arr = np.zeros((len(inverse_r2_dB_arr,)))
+    mse_ls_dB_arr = np.zeros((len(inverse_r2_dB_arr,)))
+    mse_ekf_dB_arr = np.zeros((len(inverse_r2_dB_arr,)))
+    mse_ukf_dB_arr = np.zeros((len(inverse_r2_dB_arr,)))
+    mse_danse_dB_arr = np.zeros((len(inverse_r2_dB_arr,)))
+    mse_ls_dB_std_arr = np.zeros((len(inverse_r2_dB_arr,)))
+    mse_ekf_dB_std_arr = np.zeros((len(inverse_r2_dB_arr,)))
+    mse_ukf_dB_std_arr = np.zeros((len(inverse_r2_dB_arr,)))
+    mse_danse_dB_std_arr = np.zeros((len(inverse_r2_dB_arr,)))
     t_ekf_arr = np.zeros((len(inverse_r2_dB_arr,)))
     t_ukf_arr = np.zeros((len(inverse_r2_dB_arr,)))
     t_danse_arr = np.zeros((len(inverse_r2_dB_arr,)))
     snr_arr = np.zeros((len(inverse_r2_dB_arr,)))
 
     model_file_saved_dict = {
+        "-25.0dB":"./models/LorenzSSM_danse_gru_m_3_n_3_T_1000_N_500_-25.0dB_-20.0dB/danse_gru_ckpt_epoch_671_best.pt",
+        "-20.0dB":"./models/LorenzSSM_danse_gru_m_3_n_3_T_1000_N_500_-20.0dB_-20.0dB/danse_gru_ckpt_epoch_671_best.pt",
         "-10.0dB":"./models/LorenzSSM_danse_gru_m_3_n_3_T_1000_N_500_-10.0dB_-20.0dB/danse_gru_ckpt_epoch_671_best.pt",
         "0.0dB":"./models/LorenzSSM_danse_gru_m_3_n_3_T_1000_N_500_0.0dB_-20.0dB/danse_gru_ckpt_epoch_671_best.pt",
         "10.0dB":"./models/LorenzSSM_danse_gru_m_3_n_3_T_1000_N_500_10.0dB_-20.0dB/danse_gru_ckpt_epoch_671_best.pt",
         "20.0dB":"./models/LorenzSSM_danse_gru_m_3_n_3_T_1000_N_500_20.0dB_-20.0dB/danse_gru_ckpt_epoch_681_best.pt",
-        "30.0dB":"./models/LorenzSSM_danse_gru_m_3_n_3_T_1000_N_500_30.0dB_-20.0dB/danse_gru_ckpt_epoch_684_best.pt"
+        "30.0dB":"./models/LorenzSSM_danse_gru_m_3_n_3_T_1000_N_500_30.0dB_-20.0dB/danse_gru_ckpt_epoch_684_best.pt",
+        "40.0dB":"./models/LorenzSSM_danse_gru_m_3_n_3_T_1000_N_500_40.0dB_-20.0dB/danse_gru_ckpt_epoch_699_best.pt"
     }
+
+    T_test = 2000
+    N_test = 100
 
     test_data_file_dict = {
-        "-10.0dB":"./data/synthetic_data/test_trajectories_m_3_n_3_LorenzSSM_data_T_2000_N_100_r2_-10.0dB_nu_-20.0dB.pkl",
-        "0.0dB":"./data/synthetic_data/test_trajectories_m_3_n_3_LorenzSSM_data_T_2000_N_100_r2_0.0dB_nu_-20.0dB.pkl",
-        "10.0dB":"./data/synthetic_data/test_trajectories_m_3_n_3_LorenzSSM_data_T_2000_N_100_r2_10.0dB_nu_-20.0dB.pkl",
-        "20.0dB":"./data/synthetic_data/test_trajectories_m_3_n_3_LorenzSSM_data_T_2000_N_100_r2_20.0dB_nu_-20.0dB.pkl",
-        "30.0dB":"./data/synthetic_data/test_trajectories_m_3_n_3_LorenzSSM_data_T_2000_N_100_r2_30.0dB_nu_-20.0dB.pkl"
+        "-25.0dB":"./data/synthetic_data/test_trajectories_{}_m_3_n_3_LorenzSSM_data_T_{}_N_{}_r2_-25.0dB_nu_-20.0dB.pkl".format(evaluation_mode, T_test, N_test),
+        "-20.0dB":"./data/synthetic_data/test_trajectories_{}_m_3_n_3_LorenzSSM_data_T_{}_N_{}_r2_-20.0dB_nu_-20.0dB.pkl".format(evaluation_mode, T_test, N_test),
+        "-10.0dB":"./data/synthetic_data/test_trajectories_{}_m_3_n_3_LorenzSSM_data_T_{}_N_{}_r2_-10.0dB_nu_-20.0dB.pkl".format(evaluation_mode, T_test, N_test),
+        "0.0dB":"./data/synthetic_data/test_trajectories_{}_m_3_n_3_LorenzSSM_data_T_{}_N_{}_r2_0.0dB_nu_-20.0dB.pkl".format(evaluation_mode, T_test, N_test),
+        "10.0dB":"./data/synthetic_data/test_trajectories_{}_m_3_n_3_LorenzSSM_data_T_{}_N_{}_r2_10.0dB_nu_-20.0dB.pkl".format(evaluation_mode, T_test, N_test),
+        "20.0dB":"./data/synthetic_data/test_trajectories_{}_m_3_n_3_LorenzSSM_data_T_{}_N_{}_r2_20.0dB_nu_-20.0dB.pkl".format(evaluation_mode, T_test, N_test),
+        "30.0dB":"./data/synthetic_data/test_trajectories_{}_m_3_n_3_LorenzSSM_data_T_{}_N_{}_r2_30.0dB_nu_-20.0dB.pkl".format(evaluation_mode, T_test, N_test),
+        "40.0dB":"./data/synthetic_data/test_trajectories_{}_m_3_n_3_LorenzSSM_data_T_{}_N_{}_r2_40.0dB_nu_-20.0dB.pkl".format(evaluation_mode, T_test, N_test)
     }
 
-    test_logfile = "./log/Lorenz_test_Partial.log"
-    test_jsonfile = "./log/Lorenz_test_Partial.json"
+    test_logfile = "./log/Lorenz_test_{}_T_{}_N_{}.log".format(evaluation_mode, T_test, N_test)
+    test_jsonfile = "./log/Lorenz_test_{}_T_{}_N_{}.json".format(evaluation_mode, T_test, N_test)
 
     for i, inverse_r2_dB in enumerate(inverse_r2_dB_arr):
         
         model_file_saved_i = model_file_saved_dict['{}dB'.format(inverse_r2_dB)]
         test_data_file_i = test_data_file_dict['{}dB'.format(inverse_r2_dB)]
         
-        nmse_ekf_i, nmse_ekf_i_std, nmse_danse_i, nmse_danse_i_std, nmse_ukf_i, nmse_ukf_i_std, nmse_ls_i, nmse_ls_i_std, time_elapsed_ekf_i, time_elapsed_danse_i, time_elapsed_ukf_i, snr_i = test_lorenz(device=device, 
-            model_file_saved=model_file_saved_i, test_data_file=test_data_file_i, test_logfile=test_logfile)
+        nmse_ekf_i, nmse_ekf_i_std, nmse_danse_i, nmse_danse_i_std, nmse_ukf_i, nmse_ukf_i_std, nmse_ls_i, nmse_ls_i_std, \
+            mse_dB_ekf_i, mse_dB_ekf_std_i, mse_dB_danse_i, mse_dB_danse_std_i, mse_dB_ukf_i, mse_dB_ukf_std_i, mse_dB_ls_i, mse_dB_ls_std_i, \
+            time_elapsed_ekf_i, time_elapsed_danse_i, time_elapsed_ukf_i, snr_i = test_lorenz(device=device, 
+            model_file_saved=model_file_saved_i, test_data_file=test_data_file_i, test_logfile=test_logfile, evaluation_mode=evaluation_mode)
+        
+        # Store the NMSE values and std devs of the NMSE values
         nmse_ls_arr[i] = nmse_ls_i.numpy().item()
         nmse_ekf_arr[i] = nmse_ekf_i.numpy().item()
         nmse_ukf_arr[i] = nmse_ukf_i.numpy().item()
@@ -337,11 +377,23 @@ if __name__ == "__main__":
         nmse_ekf_std_arr[i] = nmse_ekf_i_std.numpy().item()
         nmse_ukf_std_arr[i] = nmse_ukf_i_std.numpy().item()
         nmse_danse_std_arr[i] = nmse_danse_i_std.numpy().item()
+        
+        # Store the MSE values and std devs of the MSE values (in dB)
+        mse_ls_dB_arr[i] = mse_dB_ls_i.numpy().item()
+        mse_ekf_dB_arr[i] = mse_dB_ekf_i.numpy().item()
+        mse_ukf_dB_arr[i] = mse_dB_ukf_i.numpy().item()
+        mse_danse_dB_arr[i] = mse_dB_danse_i.numpy().item()
+        mse_ls_dB_std_arr[i] = mse_dB_ls_std_i.numpy().item()
+        mse_ekf_dB_std_arr[i] = mse_dB_ekf_std_i.numpy().item()
+        mse_ukf_dB_std_arr[i] = mse_dB_ukf_std_i.numpy().item()
+        mse_danse_dB_std_arr[i] = mse_dB_danse_std_i.numpy().item()
+
         t_ekf_arr[i] = time_elapsed_ekf_i
         t_ukf_arr[i] = time_elapsed_ukf_i
         t_danse_arr[i] = time_elapsed_danse_i
         snr_arr[i] = 10*np.log10(snr_i.numpy().item())
     
+    '''
     test_stats = {}
     test_stats['UKF_mean_nmse'] = nmse_ukf_arr
     test_stats['EKF_mean_nmse'] = nmse_ekf_arr
@@ -349,11 +401,21 @@ if __name__ == "__main__":
     test_stats['UKF_std_nmse'] = nmse_ukf_std_arr
     test_stats['EKF_std_nmse'] = nmse_ekf_std_arr
     test_stats['DANSE_std_nmse'] = nmse_danse_std_arr
+    test_stats['LS_mean_nmse'] = nmse_ls_arr
+    test_stats['LS_std_nmse'] = nmse_ls_std_arr
+
+    test_stats['EKF_mean_mse'] = mse_ekf_dB_arr
+    test_stats['UKF_mean_mse'] = mse_ukf_dB_arr
+    test_stats['DANSE_mean_mse'] = mse_danse_dB_arr
+    test_stats['EKF_std_mse'] = mse_ekf_dB_std_arr
+    test_stats['UKF_std_mse'] = mse_ukf_dB_std_arr
+    test_stats['DANSE_std_mse'] = mse_danse_dB_std_arr
+    test_stats['LS_mean_mse'] = mse_ls_dB_arr
+    test_stats['LS_std_mse'] = mse_ls_dB_std_arr
+
     test_stats['UKF_time'] = t_ukf_arr
     test_stats['EKF_time'] = t_ekf_arr
     test_stats['DANSE_time'] = t_danse_arr
-    test_stats['LS_mean_nmse'] = nmse_ls_arr
-    test_stats['LS_std_nmse'] = nmse_ls_std_arr
     test_stats['SNR'] = snr_arr
 
     with open(test_jsonfile, 'w') as f:
@@ -370,8 +432,10 @@ if __name__ == "__main__":
     plt.ylabel('NMSE (in dB)')
     plt.grid(True)
     plt.legend()
+    plt.tight_layout()
     #plt.subplot(212)
-    plt.savefig('./figs/LorenzModel/Partial/NMSE_vs_inverse_r2dB_Lorenz.pdf')
+    tikzplotlib.save('./figs/LorenzModel/{}/NMSE_vs_inverse_r2dB_Lorenz.tex'.format(evaluation_mode))
+    plt.savefig('./figs/LorenzModel/{}/NMSE_vs_inverse_r2dB_Lorenz.pdf'.format(evaluation_mode))
 
     plt.figure()
     plt.plot(snr_arr, nmse_ls_arr, 'gp--', linewidth=1.5, label="NMSE-LS")
@@ -382,7 +446,9 @@ if __name__ == "__main__":
     plt.ylabel('NMSE (in dB)')
     plt.grid(True)
     plt.legend()
-    plt.savefig('./figs/LorenzModel/Partial/NMSE_vs_SNR_Lorenz.pdf')
+    plt.tight_layout()
+    tikzplotlib.save('./figs/LorenzModel/{}/NMSE_vs_SNR_Lorenz.tex'.format(evaluation_mode))
+    plt.savefig('./figs/LorenzModel/{}/NMSE_vs_SNR_Lorenz.pdf'.format(evaluation_mode))
 
     # Plotting the Time-elapsed Curve
     plt.figure()
@@ -394,7 +460,38 @@ if __name__ == "__main__":
     plt.ylabel('Time (in s)')
     plt.grid(True)
     plt.legend()
-    plt.savefig('./figs/LorenzModel/Partial/InferTime_vs_inverse_r2dB_Lorenz.pdf')
+    plt.tight_layout()
+    tikzplotlib.save('./figs/LorenzModel/{}/InferTime_vs_inverse_r2dB_Lorenz.tex'.format(evaluation_mode))
+    plt.savefig('./figs/LorenzModel/{}/InferTime_vs_inverse_r2dB_Lorenz.pdf'.format(evaluation_mode))
+
+    # Plotting the MSE Curve
+    plt.rcParams['font.family'] = 'serif'
+    plt.figure()
+    plt.plot(inverse_r2_dB_arr, mse_ls_dB_arr, 'gp--', linewidth=1.5, label="MSE-LS")
+    plt.plot(inverse_r2_dB_arr, mse_ekf_dB_arr, 'rd--', linewidth=1.5, label="MSE-EKF")
+    plt.plot(inverse_r2_dB_arr, mse_ukf_dB_arr, 'ks-', linewidth=1.5, label="MSE-UKF")
+    plt.plot(inverse_r2_dB_arr, mse_danse_dB_arr, 'bo-', linewidth=2.0, label="MSE-DANSE")
+    plt.xlabel('$\\frac{1}{r^2}$ (in dB)')
+    plt.ylabel('MSE (in dB)')
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    #plt.subplot(212)
+    tikzplotlib.save('./figs/LorenzModel/{}/MSE_vs_inverse_r2dB_Linear.tex'.format(evaluation_mode))
+    plt.savefig('./figs/LorenzModel/{}/MSE_vs_inverse_r2dB_Linear.pdf'.format(evaluation_mode))
+
+    plt.figure()
+    plt.plot(snr_arr, mse_ls_dB_arr, 'gp--', linewidth=1.5, label="MSE-LS")
+    plt.plot(snr_arr, mse_ekf_dB_arr, 'rd--', linewidth=1.5, label="MSE-EKF")
+    plt.plot(snr_arr, mse_ukf_dB_arr, 'ks-', linewidth=1.5, label="MSE-UKF")
+    plt.plot(snr_arr, mse_danse_dB_arr, 'bo-', linewidth=2.0, label="MSE-DANSE")
+    plt.xlabel('SNR (in dB)')
+    plt.ylabel('MSE (in dB)')
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    tikzplotlib.save('./figs/LorenzModel/{}/MSE_vs_SNR_Linear.tex'.format(evaluation_mode))
+    plt.savefig('./figs/LorenzModel/{}/MSE_vs_SNR_Linear.pdf'.format(evaluation_mode))
 
     #plt.subplot(212)
     plt.figure()
@@ -405,7 +502,9 @@ if __name__ == "__main__":
     plt.ylabel('Time (in s)')
     plt.grid(True)
     plt.legend()
-    plt.savefig('./figs/LorenzModel/Partial/InferTime_vs_SNR_Lorenz.pdf')
-
-    plt.show()
+    plt.tight_layout()
+    tikzplotlib.save('./figs/LorenzModel/{}/InferTime_vs_SNR_Lorenz.tex'.format(evaluation_mode))
+    plt.savefig('./figs/LorenzModel/{}/InferTime_vs_SNR_Lorenz.pdf'.format(evaluation_mode))
+    '''
+    #plt.show()
 

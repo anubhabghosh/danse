@@ -103,7 +103,11 @@ def main():
         splits = load_splits_file(splits_filename=splits_file)
         tr_indices, val_indices, test_indices = splits["train"], splits["val"], splits["test"]
 
-    train_loader, val_loader, test_loader = get_dataloaders(Z_XY_dataset, batch_size, tr_indices, val_indices, test_indices)
+    train_loader, val_loader, test_loader = get_dataloaders(dataset=Z_XY_dataset, 
+                                                            batch_size=batch_size, 
+                                                            tr_indices=tr_indices, 
+                                                            val_indices=val_indices, 
+                                                            test_indices=test_indices)
 
     print("No. of training, validation and testing batches: {}, {}, {}".format(len(train_loader), 
                                                                                 len(val_loader), 

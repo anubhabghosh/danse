@@ -10,7 +10,7 @@ from utils.utils import dB_to_lin, mse_loss
 class EKF(nn.Module):
     """ This class implements an extended Kalman filter in PyTorch
     """
-    def __init__(self, n_states, n_obs, J=5, delta=0.01, f=None, h=None, Q=None, R=None, inverse_r2_dB=None, nu_dB=None, device='cpu', use_Taylor=False):
+    def __init__(self, n_states, n_obs, J=5, delta=0.02, f=None, h=None, Q=None, R=None, inverse_r2_dB=None, nu_dB=None, device='cpu', use_Taylor=False):
         super(EKF, self).__init__()
 
         self.n_states = n_states
@@ -173,12 +173,12 @@ class EKF(nn.Module):
                 #Also save covariances
                 Pk_estimated[i,k+1,:,:] = Pk_pos
 
-            mse_arr[i] = mse_loss(X[i,1:,:], traj_estimated[i,1:,:])  # Calculate the squared error across the length of a single sequence
+            mse_arr[i] = mse_loss(X[i,1:,:], traj_estimated[i,1:,:]).mean()  # Calculate the squared error across the length of a single sequence
             #print("ekf, sample: {}, mse_loss: {}".format(i+1, mse_arr[i]))
 
-        mse_ekf_lin_avg = torch.mean(mse_arr, dim=0) # Calculate the MSE by averaging over all examples in a batch
-        mse_ekf_dB_avg = 10*torch.log10(mse_ekf_lin_avg)
+        #mse_ekf_lin_avg = torch.mean(10*torch.log10(mse_arr), dim=0) # Calculate the MSE by averaging over all examples in a batch
+        mse_ekf_dB_avg = torch.mean(10*torch.log10(mse_arr), dim=0)
         print("EKF - MSE LOSS:", mse_ekf_dB_avg, "[dB]")
-        print("EKF - MSE STD:", 10*torch.log10(torch.std(mse_arr, dim=0).abs()), "[dB]")
+        print("EKF - MSE STD:", torch.std(10*torch.log10(mse_arr), dim=0), "[dB]")
 
         return traj_estimated, Pk_estimated, mse_ekf_dB_avg
