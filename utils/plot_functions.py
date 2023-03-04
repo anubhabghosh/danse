@@ -6,23 +6,25 @@ from mpl_toolkits.mplot3d import Axes3D
 import tikzplotlib
 import os
 
-def plot_state_trajectory(X, X_est_KF=None, X_est_EKF=None, X_est_UKF=None, X_est_DANSE=None, savefig=False, savefig_name=None):
+def plot_state_trajectory(X, X_est_KF=None, X_est_EKF=None, X_est_UKF=None, X_est_DANSE=None, X_est_KNET=None, savefig=False, savefig_name=None):
     
     # Creating 3d plot of the data
-    print(X.shape)
+    #print(X.shape)
     
     if X.shape[-1] == 2:
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.plot(X[:,0], X[:,1],'--',label='$\\mathbf{x}^{true}$')
+        ax.plot(X[:,0], X[:,1],'k-',label='$\\mathbf{x}^{true}$')
         if not X_est_KF is None:
             ax.plot(X_est_KF[:,0], X_est_KF[:,1],':',label='$\\hat{\mathbf{x}}_{KF}$')
         if not X_est_EKF is None:
-            ax.plot(X_est_EKF[:,0], X_est_EKF[:,1],':',label='$\\hat{\mathbf{x}}_{EKF}$')
+            ax.plot(X_est_EKF[:,0], X_est_EKF[:,1],'b.-',label='$\\hat{\mathbf{x}}_{EKF}$')
         if not X_est_UKF is None:
             ax.plot(X_est_UKF[:,0], X_est_UKF[:,1],'-.',label='$\\hat{\mathbf{x}}_{UKF}$')
         if not X_est_DANSE is None:
-            ax.plot(X_est_DANSE[:,0], X_est_DANSE[:,1],'--',label='$\\hat{\mathbf{x}}_{DANSE}$')
+            ax.plot(X_est_DANSE[:,0], X_est_DANSE[:,1],'r--',label='$\\hat{\mathbf{x}}_{DANSE}$')
+        if not X_est_KNET is None:
+            ax.plot(X_est_KNET[:,0], X_est_KNET[:,1], 'c--.',label='$\\hat{\mathbf{x}}_{KNET}$')
         ax.set_xlabel('$X_1$')
         ax.set_ylabel('$X_2$')
         plt.legend()
@@ -30,15 +32,17 @@ def plot_state_trajectory(X, X_est_KF=None, X_est_EKF=None, X_est_UKF=None, X_es
     elif X.shape[-1] > 2:
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
-        ax.plot(X[:,0], X[:,1], X[:,2], '--',label='$\\mathbf{x}^{true}$')
+        ax.plot(X[:,0], X[:,1], X[:,2], 'k-', label='$\\mathbf{x}^{true}$')
         if not X_est_KF is None:
             ax.plot(X_est_KF[:,0], X_est_KF[:,1], X_est_KF[:,2], ':',label='$\\hat{\mathbf{x}}_{KF}$')
         if not X_est_EKF is None:
-            ax.plot(X_est_EKF[:,0], X_est_EKF[:,1], X_est_EKF[:,2], ':',label='$\\hat{\mathbf{x}}_{EKF}$')
+            ax.plot(X_est_EKF[:,0], X_est_EKF[:,1], X_est_EKF[:,2], 'b.-', label='$\\hat{\mathbf{x}}_{EKF}$', lw=1.3)
         if not X_est_UKF is None:
-            ax.plot(X_est_UKF[:,0], X_est_UKF[:,1], X_est_UKF[:,2], '-.',label='$\\hat{\mathbf{x}}_{UKF}$')
+            ax.plot(X_est_UKF[:,0], X_est_UKF[:,1], X_est_UKF[:,2], 'x-', ms=4, color="orange", label='$\\hat{\mathbf{x}}_{UKF}$', lw=1.3)
+        if not X_est_KNET is None:
+            ax.plot(X_est_KNET[:,0], X_est_KNET[:,1], X_est_KNET[:,2], 'c--.',label='$\\hat{\mathbf{x}}_{KNET}$', lw=1.3)
         if not X_est_DANSE is None:
-            ax.plot(X_est_DANSE[:,0], X_est_DANSE[:,1], X_est_DANSE[:,2], '--',label='$\\hat{\mathbf{x}}_{DANSE}$')
+            ax.plot(X_est_DANSE[:,0], X_est_DANSE[:,1], X_est_DANSE[:,2], 'r--',label='$\\hat{\mathbf{x}}_{DANSE}$', lw=1.3)
         ax.set_xlabel('$X_1$')
         ax.set_ylabel('$X_2$')
         ax.set_zlabel('$X_3$')
@@ -46,7 +50,7 @@ def plot_state_trajectory(X, X_est_KF=None, X_est_EKF=None, X_est_UKF=None, X_es
         order=None
         if order is None:
             order=range(len(handles))
-        ax.legend([handles[idx] for idx in order], [labels[idx] for idx in order],ncol=4,fontsize=12)
+        ax.legend([handles[idx] for idx in order], [labels[idx] for idx in order],ncol=5,fontsize=12)
         #ax.get_legend().set_bbox_to_anchor(bbox=(1,0))
         plt.tight_layout()
 
@@ -90,10 +94,10 @@ def plot_measurement_data(Y, savefig=False, savefig_name=None):
     #plt.show()
     return None
 
-def plot_state_trajectory_axes(X, X_est_KF=None, X_est_EKF=None, X_est_UKF=None, X_est_DANSE=None, savefig=False, savefig_name=None):
+def plot_state_trajectory_axes(X, X_est_KF=None, X_est_EKF=None, X_est_UKF=None, X_est_KNET=None, X_est_DANSE=None, savefig=False, savefig_name=None):
     
     # Creating 3d plot of the data
-    print(X.shape)
+    #print(X.shape)
     Tx, _ = X.shape
     T_end = 200
 
@@ -102,13 +106,15 @@ def plot_state_trajectory_axes(X, X_est_KF=None, X_est_EKF=None, X_est_UKF=None,
         plt.subplot(311)
         plt.plot(X[:T_end,0],'--',label='$\\mathbf{x}^{true} (x-component) $')
         if not X_est_KF is None:
-            plt.plot(X_est_KF[:T_end,0], ':',label='$\\hat{\mathbf{x}}_{KF} (x-component) $')
+            plt.plot(X_est_KF[:T_end,0], 'g:',label='$\\hat{\mathbf{x}}_{KF} (x-component) $')
         if not X_est_DANSE is None:
-            plt.plot(X_est_DANSE[:T_end,0], '--',label='$\\hat{\mathbf{x}}_{DANSE} (x-component) $')
+            plt.plot(X_est_DANSE[:T_end,0], 'r--',label='$\\hat{\mathbf{x}}_{DANSE} (x-component) $')
+        if not X_est_KNET is None:
+            plt.plot(X_est_KNET[:T_end,0], 'c--.',label='$\\hat{\mathbf{x}}_{KNET} (x-component) $')
         if not X_est_EKF is None:
-            plt.plot(X_est_EKF[:T_end,0], ':',label='$\\hat{\mathbf{x}}_{EKF} (x-component) $')
+            plt.plot(X_est_EKF[:T_end,0], 'b.-',label='$\\hat{\mathbf{x}}_{EKF} (x-component) $')
         if not X_est_UKF is None:
-            plt.plot(X_est_UKF[:T_end,0], ':',label='$\\hat{\mathbf{x}}_{UKF} (x-component) $')
+            plt.plot(X_est_UKF[:T_end,0], '-x',ms=4,color="orange",label='$\\hat{\mathbf{x}}_{UKF} (x-component) $')
         plt.ylabel('$X_1$')
         plt.xlabel('$n$')
         plt.legend()
@@ -116,29 +122,33 @@ def plot_state_trajectory_axes(X, X_est_KF=None, X_est_EKF=None, X_est_UKF=None,
         plt.subplot(312)
         plt.plot(X[:T_end,1], '--',label='$\\mathbf{x}^{true} (y-component)$')
         if not X_est_DANSE is None:
-            plt.plot(X_est_DANSE[:T_end,1], '--',label='$\\hat{\mathbf{x}}_{DANSE} (y-component) $')
+            plt.plot(X_est_DANSE[:T_end,1], 'r--',label='$\\hat{\mathbf{x}}_{DANSE} (y-component) $')
+        if not X_est_KNET is None:
+            plt.plot(X_est_KNET[:T_end,1], 'c--.',label='$\\hat{\mathbf{x}}_{KNET} (y-component) $')
         if not X_est_KF is None:
-            plt.plot(X_est_KF[:T_end,1], ':',label='$\\hat{\mathbf{x}}_{KF} (y-component) $')
+            plt.plot(X_est_KF[:T_end,1], 'g:',label='$\\hat{\mathbf{x}}_{KF} (y-component) $')
         if not X_est_EKF is None:
-            plt.plot(X_est_EKF[:T_end,1], ':',label='$\\hat{\mathbf{x}}_{EKF} (y-component) $')
+            plt.plot(X_est_EKF[:T_end,1], 'b.-',label='$\\hat{\mathbf{x}}_{EKF} (y-component) $')
         if not X_est_UKF is None:
-            plt.plot(X_est_UKF[:T_end,1], ':',label='$\\hat{\mathbf{x}}_{UKF} (y-component) $')
+            plt.plot(X_est_UKF[:T_end,1], 'x-',ms=4,color="orange",label='$\\hat{\mathbf{x}}_{UKF} (y-component) $')
         plt.ylabel('$X_2$')
         plt.xlabel('$n$')
         plt.legend()
         
     elif X.shape[-1] > 2:
         T_start=33
-        T_end=205
+        T_end=165
         idim=2
         lw=1.3
-        plt.rcParams['font.size'] = 14
+        plt.rcParams['font.size'] = 16
         fig, ax = plt.subplots(figsize=(9,5))
         #plt.subplot(311)
         if not X_est_UKF is None:
-            ax.plot(X_est_UKF[T_start:T_end,idim], 'x-',ms=4,color="orange",label='$\\hat{\mathbf{x}}_{UKF}$',lw=lw)
+            ax.plot(X_est_UKF[T_start:T_end,idim], 'x-',ms=5,color="orange",label='$\\hat{\mathbf{x}}_{UKF}$',lw=lw)
         if not X_est_DANSE is None:
-            ax.plot(X_est_DANSE[T_start:T_end,idim], 'r--',label='$\\hat{\mathbf{x}}_{DANSE}$',lw=lw)
+            ax.plot(X_est_DANSE[T_start:T_end,idim], 'rs-',label='$\\hat{\mathbf{x}}_{DANSE}$',lw=lw, ms=4)
+        if not X_est_KNET is None:
+            plt.plot(X_est_KNET[T_start:T_end,idim], 'c--.',label='$\\hat{\mathbf{x}}_{KNET} $', lw=lw)
         if not X_est_KF is None:
             ax.plot(X_est_KF[T_start:T_end,idim], 'g:',label='$\\hat{\mathbf{x}}_{KF}$',lw=lw)
         if not X_est_EKF is None:
@@ -152,7 +162,7 @@ def plot_state_trajectory_axes(X, X_est_KF=None, X_est_EKF=None, X_est_UKF=None,
         order=None
         if order is None:
             order=range(len(handles))
-        ax.legend([handles[idx] for idx in order], [labels[idx] for idx in order],ncol=4,loc="lower right",fontsize=12)
+        ax.legend([handles[idx] for idx in order], [labels[idx] for idx in order],ncol=5,loc=(-0.02,1.01),fontsize=16)
         plt.tight_layout()
         
         '''
@@ -186,8 +196,8 @@ def plot_state_trajectory_axes(X, X_est_KF=None, X_est_EKF=None, X_est_UKF=None,
         '''
     plt.tight_layout()
     if savefig:
-        plt.savefig(savefig_name)
-        tikzplotlib.save(os.path.splitext(savefig_name)[0] + ".tex")
+        fig.savefig(savefig_name,dpi=300,bbox_inches="tight")
+    #    tikzplotlib.save(os.path.splitext(savefig_name)[0] + ".tex")
     #plt.show()
     return None
 

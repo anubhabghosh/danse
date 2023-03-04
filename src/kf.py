@@ -38,7 +38,7 @@ class KF(nn.Module):
     def initialize_stats(self):
 
         # Defining the required state to be estimate 
-        self.x_hat_pos_k = torch.ones((self.n_states, 1), device=self.device) # Assuming initial value of the state is zero, i.e. \hat{p}_0^{+} = 0
+        self.x_hat_pos_k = torch.zeros((self.n_states, 1), device=self.device) # Assuming initial value of the state is zero, i.e. \hat{p}_0^{+} = 0
         self.Pk_pos = torch.eye(self.n_states, device=self.device) # Assuming initial value of the state covariance for the filtered estimate is identity, i.e. P_{0 \vert 0} = I
         self.Sk_pos_sqrt = torch.cholesky(self.Pk_pos).to(self.device) # Assuming initial value of the state covariance for the filtered estimate is identity, i.e. P_{0 \vert 0} = I
         self.x_hat_neg_k = torch.zeros((self.n_states, 1), device=self.device) # Prediction state \hat{x}_{k \vert k-1}
@@ -147,7 +147,9 @@ class KF(nn.Module):
             
                 # Save filtered state estimates
                 traj_estimated[i,k+1,:] = x_rec_hat_pos_k.view(-1,)
-                
+
+                #print("batch: {}, k: {}, KG norm: {}".format(i+1, k+1, torch.norm(self.K_k)))
+
                 #Also save covariances
                 Pk_estimated[i,k+1,:,:] = Pk_pos
 
@@ -160,7 +162,7 @@ class KF(nn.Module):
         #print("KF - MSE STD:", 10*torch.log10(torch.std(mse_arr, dim=0).abs()), "[dB]")
 
         mse_kf_dB_avg = torch.mean(10*torch.log10(mse_arr), dim=0)
-        print("EKF - MSE LOSS:", mse_kf_dB_avg, "[dB]")
-        print("EKF - MSE STD:", torch.std(10*torch.log10(mse_arr), dim=0), "[dB]")
+        print("KF - MSE LOSS:", mse_kf_dB_avg, "[dB]")
+        print("KF - MSE STD:", torch.std(10*torch.log10(mse_arr), dim=0), "[dB]")
 
         return traj_estimated, Pk_estimated, mse_kf_dB_avg
