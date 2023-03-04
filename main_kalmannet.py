@@ -17,12 +17,28 @@ from torch.utils.data import DataLoader, Dataset
 from utils.utils import load_saved_dataset, Series_Dataset, obtain_tr_val_test_idx, create_splits_file_name, \
     create_file_paths, check_if_dir_or_file_exists, load_splits_file, get_dataloaders, NDArrayEncoder
 # Import the parameters
-from parameters import get_parameters, J_test, delta_t_test, delta_t, J_gen, A_fn, h_fn, f_lorenz_danse
+from parameters import get_parameters, J_test, delta_t_test, delta_t, J_gen, A_fn, h_fn
 from ssm_models import *
 #from utils.plot_functions import plot_measurement_data, plot_measurement_data_axes, plot_state_trajectory, plot_state_trajectory_axes
 
 # Import estimator model and functions
 from src.k_net import KalmanNetNN, train_KalmanNetNN, test_KalmanNetNN
+
+def f_lorenz_danse(x, device='cpu'):
+
+    B = torch.Tensor([[[0,  0, 0],[0, 0, -1],[0,  1, 0]], torch.zeros(3,3), torch.zeros(3,3)]).type(torch.FloatTensor).to(device)
+    C = torch.Tensor([[-10, 10,    0],
+                      [ 28, -1,    0],
+                      [  0,  0, -8/3]]).type(torch.FloatTensor).to(device)
+    A = torch.einsum('kn,nij->ij',x.reshape((1,-1)),B) + C
+    #delta_t = 0.02 # Hardcoded for now
+    # Taylor Expansion for F    
+    F = torch.eye(3).type(torch.FloatTensor).to(device)
+    J = J_test # Hardcoded for now
+    for j in range(1,J+1):
+        F_add = (torch.matrix_power(A*delta_t, j)/math.factorial(j))
+        F = torch.add(F, F_add)
+    return torch.matmul(F, x)
 
 def main():
 
@@ -189,7 +205,7 @@ def main():
                                         use_Taylor=ssm_parameters_dict[ssm_type]["use_Taylor"])
 
         def fn(x):
-            return f_lorenz_danse(x)
+            return f_lorenz_danse(x, device=device)
         
         def hn(x):
             return h_fn(x)

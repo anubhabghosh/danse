@@ -107,7 +107,7 @@ class KalmanNetNN(nn.Module):
         # Compute the 1-st moment of x based on model knowledge and without process noise
         self.state_process_prior_0 = torch.zeros_like(self.state_process_posterior_0).type(torch.FloatTensor).to(self.device)
         for i in range(self.state_process_posterior_0.shape[1]):
-            print(i, self.state_process_prior_0.shape, self.state_process_posterior_0.shape)
+            #print(i, self.state_process_prior_0.shape, self.state_process_posterior_0.shape)
             self.state_process_prior_0[:, i] = self.f_k(self.state_process_posterior_0[:,i].reshape((-1,1))).view(-1,)
         #self.state_process_prior_0 = self.f_k(self.state_process_posterior_0) # torch.matmul(self.F,self.state_process_posterior_0)
 
@@ -320,16 +320,16 @@ def train_KalmanNetNN(model, options, train_loader, val_loader, nepochs,
 
         # Load obserations and targets from CV data
         y_cv, cv_target = next(iter(val_loader))
-        _, Ty, dy = y_cv.shape
+        N_CV, Ty, dy = y_cv.shape
         #_, _, dx = cv_target.shape
         y_cv = torch.transpose(y_cv, 1, 2).type(torch.FloatTensor).to(model.device)
         cv_target = torch.transpose(cv_target, 1, 2).type(torch.FloatTensor).to(model.device)
 
-        model.SetBatch(options["N_CV"])
+        model.SetBatch(N_CV)
         model.InitSequence(torch.zeros(model.n_states,1))
 
-        x_out_cv = torch.empty(options["N_CV"], model.ssModel.n_states, Ty, device= device).to(model.device)
-        y_out_cv = torch.empty(options["N_CV"], model.ssModel.n_obs, Ty, device= device).to(model.device)
+        x_out_cv = torch.empty(N_CV, model.ssModel.n_states, Ty, device= device).to(model.device)
+        y_out_cv = torch.empty(N_CV, model.ssModel.n_obs, Ty, device= device).to(model.device)
 
         for t in range(0, Ty):
             #print("Time instant t:{}".format(t+1))
@@ -370,14 +370,15 @@ def train_KalmanNetNN(model, options, train_loader, val_loader, nepochs,
 
         # Load random batch sized data, creating new iter ensures the data is shuffled
         y_training, train_target = next(iter(train_loader))
+        N_E, Ty, dy = y_training.shape
         y_training = torch.transpose(y_training, 1, 2).type(torch.FloatTensor).to(model.device)
         train_target = torch.transpose(train_target, 1, 2).type(torch.FloatTensor).to(model.device)
 
-        model.SetBatch(options["N_E"])
+        model.SetBatch(N_E)
         model.InitSequence(torch.zeros(model.n_states,1))
 
-        x_out_training = torch.empty(options["N_E"], model.n_states, Ty, device=device).to(model.device)
-        y_out_training = torch.empty(options["N_E"], model.n_obs, Ty,device=device).to(model.device)
+        x_out_training = torch.empty(N_E, model.n_states, Ty, device=device).to(model.device)
+        y_out_training = torch.empty(N_E, model.n_obs, Ty,device=device).to(model.device)
 
         for t in range(0, Ty):
             x_out_training[:,:,t] = model(y_training[:,:,t]).T

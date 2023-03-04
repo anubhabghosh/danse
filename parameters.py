@@ -275,7 +275,7 @@ def get_parameters(N=1000, T=100, n_states=5, n_obs=5, q2=1.0, r2=1.0,
             "nu_dB":0.0,
             "lr":1e-3,
             "weight_decay":1e-6,
-            "num_epochs":500,
+            "num_epochs":100,
             "batch_size":100,
             "device":device
         }
