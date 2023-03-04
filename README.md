@@ -1,11 +1,11 @@
-# DANSE - Data-driven Nonlinear State Estimation of a Model-free process with Linear measurements
+# DANSE: Data-driven Nonlinear State Estimation of Model-free Process in Unsupervised Bayesian Setup
 
 ### Under review at EUSIPCO'23
 This is the repository for implementing a nonlinear state estimation of a model-free process with Linear measurements 
 
 ## Dependencies
 - PyTorch (1.6.0)
-- Python (3.8.12) with standard packages as part of an Anaconda installation such as Numpy (1.20.3), Scipy (1.7.3), Matplotlib (3.4.3), etc.
+- Python (>= 3.7.0) with standard packages as part of an Anaconda installation such as Numpy, Scipy, Matplotlib etc.
 - Filterpy (1.4.5) (for implementation of Unscented Kalman Filter (UKF)): [https://filterpy.readthedocs.io/en/latest/](https://filterpy.readthedocs.io/en/latest/)
 
 ## Reference models (implemented in PyTorch)
@@ -50,6 +50,10 @@ This would be required organization of files and folders for reproducing results
 `run_main_danse.sh`. Ensure that directories `/log/` and `/models/` have been created.
 
 4. Run the training for the unsupervised KalmanNet by calling `main_kalmannet.py`. Also posible in similar manner as `run_main_knet_gpu1.sh`. Parameters have to be edited in `parameters.py`.
+
+### Grid-search (for DANSE)
+
+Can be run by calling the script `main_danse_gs.py` with grid-search parameters to be edited in the script directly. Relevant shell script that can be edited and used: `run_main_danse_gs_gpu1.sh`.
 
 ### Evaluation
 
