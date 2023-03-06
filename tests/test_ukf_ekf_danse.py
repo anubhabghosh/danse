@@ -163,8 +163,8 @@ def test_lorenz(device='cpu', model_file_saved=None, model_file_saved_knet=None,
     print("1/r2: {}dB, nu: {}dB".format(inverse_r2_dB_test, nu_dB_test))
     print("1/r2: {}dB, nu: {}dB".format(inverse_r2_dB_test, nu_dB_test), file=orig_stdout)
     #print(i_test)
-    Y = Y[:2]
-    X = X[:2]
+    #Y = Y[:2]
+    #X = X[:2]
 
     N_test, Ty, dy = Y.shape
     N_test, Tx, dx = X.shape
@@ -513,7 +513,7 @@ if __name__ == "__main__":
     test_stats['DANSE_time'] = t_danse_arr
     test_stats['KNET_time'] = t_knet_arr
     test_stats['SNR'] = snr_arr
-    '''
+    
     with open(test_jsonfile, 'w') as f:
         f.write(json.dumps(test_stats, cls=NDArrayEncoder, indent=2))
 
@@ -607,6 +607,6 @@ if __name__ == "__main__":
     plt.tight_layout()
     tikzplotlib.save('./figs/LorenzModel/{}/InferTime_vs_SNR_Lorenz_w_knet.tex'.format(evaluation_mode))
     plt.savefig('./figs/LorenzModel/{}/InferTime_vs_SNR_Lorenz_w_knet.pdf'.format(evaluation_mode))
-    '''
+    
     #plt.show()
 
