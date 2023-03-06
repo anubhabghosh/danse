@@ -3,10 +3,14 @@
 ### Under review at EUSIPCO'23
 This is the repository for implementing a nonlinear state estimation of a model-free process with Linear measurements 
 
+## Authors
+Anubhab Ghosh (anubhabg@kth.se), Antoine Honoré (honore@kth.se)
+
 ## Dependencies
 - PyTorch (1.6.0)
 - Python (>= 3.7.0) with standard packages as part of an Anaconda installation such as Numpy, Scipy, Matplotlib etc.
 - Filterpy (1.4.5) (for implementation of Unscented Kalman Filter (UKF)): [https://filterpy.readthedocs.io/en/latest/](https://filterpy.readthedocs.io/en/latest/)
+- Jupyter notebook (>= 6.4.6) (for result analysis)
 
 ## Reference models (implemented in PyTorch)
 
@@ -27,8 +31,8 @@ This would be required organization of files and folders for reproducing results
 | - danse.py 
 | - ekf.py
 |···
-- log/ (contains training and evaluation logs, losses in .json files)
-- models/ (contains saved model checkpoints)
+- log/ (contains training and evaluation logs, losses in `.json`, `.log` files)
+- models/ (contains saved model checkpoints saved as `.pt` files)
 - figs/ (contains resulting model figures)
 - utils/ (contains helping functions for \src\, etc.)
 - figs/ (contains result figures)
@@ -40,7 +44,7 @@ This would be required organization of files and folders for reproducing results
 - generate_data.py (contains code for generating training datasets)
 ````
 
-### Brief outline of DANSE training
+## Brief outline of DANSE training
 
 1. Generate data by calling `generate_data.py`. This can be done in a simple manner by editing and calling the shell script `run_generate_data.sh`. Data gets stored at `data/synthetic_data/`.
 
@@ -51,15 +55,14 @@ This would be required organization of files and folders for reproducing results
 
 4. Run the training for the unsupervised KalmanNet by calling `main_kalmannet.py`. Also posible in similar manner as `run_main_knet_gpu1.sh`. Parameters have to be edited in `parameters.py`.
 
-### Grid-search (for DANSE)
+### Grid-search (for architectural choice of DANSE)
 
 Can be run by calling the script `main_danse_gs.py` with grid-search parameters to be edited in the script directly. Relevant shell script that can be edited and used: `run_main_danse_gs_gpu1.sh`.
 
-### Evaluation
+## Evaluation
 
 Once files are created, the evaluation can be done by calling scripts in `/tests/`. Paths to model files and log files should be edited in the script directly. 
 
 1. Linear model ($2 \times 2$ model) comparison: `/tests/test_kf_linear_2x2.py`
-
 2. Lorenz model comparsion: `/tests/test_ukf_ekf_danse.py`.
 
