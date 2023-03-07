@@ -1,3 +1,7 @@
+#####################################################
+# Creator: Anubhab Ghosh 
+# Feb 2023
+#####################################################
 # This function is used to define the parameters of the model
 import numpy as np
 import math

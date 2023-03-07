@@ -1,3 +1,7 @@
+#####################################################
+# Creators: Anubhab Ghosh, Antoine Honoré
+# Feb 2023
+#####################################################
 from cProfile import label
 from turtle import color
 import numpy as np

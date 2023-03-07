@@ -1,4 +1,7 @@
-# Creator: Anubhab Ghosh (anubhabg@kth.se)
+#####################################################
+# Creator: Anubhab Ghosh 
+# Feb 2023
+#####################################################
 
 # Import necessary libraries
 import sys

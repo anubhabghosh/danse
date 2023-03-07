@@ -26,7 +26,7 @@ Anubhab Ghosh (anubhabg@kth.se), Antoine Honoré (honore@kth.se)
 This would be required organization of files and folders for reproducing results. If certain folders are not present, they should be created at that level.
 
 ````
-- data/ (contains)
+- data/ (contains stored datasets in .pkl files)
 - src/ (contains model related files)
 | - danse.py 
 | - ekf.py
@@ -46,12 +46,23 @@ This would be required organization of files and folders for reproducing results
 
 ## Brief outline of DANSE training
 
-1. Generate data by calling `generate_data.py`. This can be done in a simple manner by editing and calling the shell script `run_generate_data.sh`. Data gets stored at `data/synthetic_data/`.
+1. Generate data by calling `generate_data.py`. This can be done in a simple manner by editing and calling the shell script `run_generate_data.sh`. Data gets stored at `data/synthetic_data/`. For e.g. to generate trajectory data with 500 samples with each trajetcoyr of length 1000, from a Lorenz Attractor model (m=3, n=3), with $\frac{1}{r^2}= 20$ dB, and $\nu=$-20 dB, the syntax should be 
+````
+[python interpreter e.g. python3.8] generate_data.py --n_states 3 --n_obs 3 --num_samples 500 --sequence_length 1000 --inverse_r2_dB 20 --nu_dB -20 --dataset_type LorenzSSM --output_path [dataset location e.g. ./data/synthetic_data/] \
+````
 
 2. Edit the parameters as per user choice to set architecture for DANSE in `parameters.py`.
 
 3. Run the training for DANSE by calling `main_danse.py`. This can be done in a simple manner by editing and calling the shell script 
-`run_main_danse.sh`. Ensure that directories `/log/` and `/models/` have been created.
+`run_main_danse.sh`. Ensure that directories `/log/` and `/models/` have been created. E.g. to run a DANSE model employing a GRU architecture as the RNN, using the Lorenz attractor dataset as described above, the syntax should be 
+```
+python3.8 main_danse.py \
+--mode train \
+--rnn_model_type gru \
+--dataset_type LorenzSSM \
+--datafile [full path to dataset, e.g. ./data/synthetic_data/trajectories_m_3_n_3_LorenzSSM_data_T_1000_N_500_r2_40.0dB_nu_-20dB.pkl] \
+--splits ./data/synthetic_data/splits.pkl
+```
 
 4. Run the training for the unsupervised KalmanNet by calling `main_kalmannet.py`. Also posible in similar manner as `run_main_knet_gpu1.sh`. Parameters have to be edited in `parameters.py`.
 

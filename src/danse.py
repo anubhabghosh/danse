@@ -1,3 +1,7 @@
+#####################################################
+# Creators: Anubhab Ghosh, Antoine Honoré
+# Feb 2023
+#####################################################
 import numpy as np
 import torch
 from torch.autograd import Variable

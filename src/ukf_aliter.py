@@ -1,3 +1,8 @@
+#####################################################
+# Creator: Anubhab Ghosh 
+# Feb 2023
+# Adopted from: https://github.com/KalmanNet/KalmanNet_TSP 
+#####################################################
 from filterpy.kalman import UnscentedKalmanFilter, MerweScaledSigmaPoints, JulierSigmaPoints 
 import torch
 from torch import nn
