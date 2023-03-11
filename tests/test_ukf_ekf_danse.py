@@ -167,8 +167,8 @@ def test_lorenz(device='cpu', model_file_saved=None, model_file_saved_knet=None,
     print("1/r2: {}dB, nu: {}dB".format(inverse_r2_dB_test, nu_dB_test))
     print("1/r2: {}dB, nu: {}dB".format(inverse_r2_dB_test, nu_dB_test), file=orig_stdout)
     #print(i_test)
-    #Y = Y[:2]
-    #X = X[:2]
+    Y = Y[:2]
+    X = X[:2]
 
     N_test, Ty, dy = Y.shape
     N_test, Tx, dx = X.shape
@@ -176,7 +176,11 @@ def test_lorenz(device='cpu', model_file_saved=None, model_file_saved_knet=None,
     # Get the estimate using the baseline
     H_tensor = torch.from_numpy(jacobian(h_fn, torch.randn(lorenz_model.n_states,)).numpy()).type(torch.FloatTensor)
     H_tensor = torch.repeat_interleave(H_tensor.unsqueeze(0),N_test,dim=0)
-    X_LS = torch.einsum('ijj,ikj->ikj',torch.pinverse(H_tensor),Y)
+    #X_LS = torch.einsum('ijj,ikj->ikj',torch.pinverse(H_tensor),Y)
+    X_LS = torch.zeros_like(Y)
+    for i in range(Y.shape[0]):
+        for j in range(Y.shape[1]):
+            X_LS[i,j,:] = (torch.pinverse(H_tensor[i]) @ Y[i,j,:].reshape((dy, 1))).reshape((dx,))
 
     if "Partial" in evaluation_mode:
         if "low" in evaluation_mode:
@@ -444,7 +448,7 @@ if __name__ == "__main__":
         "30.0dB":"./data/synthetic_data/test_trajectories_{}_m_3_n_3_LorenzSSM_data_T_{}_N_{}_r2_30.0dB_nu_-20.0dB.pkl".format(evaluation_mode, T_test, N_test),
         "40.0dB":"./data/synthetic_data/test_trajectories_{}_m_3_n_3_LorenzSSM_data_T_{}_N_{}_r2_40.0dB_nu_-20.0dB.pkl".format(evaluation_mode, T_test, N_test)
     }
-
+    
     test_logfile = "./log/Lorenz_test_{}_T_{}_N_{}_w_knet.log".format(evaluation_mode, T_test, N_test)
     test_jsonfile = "./log/Lorenz_test_{}_T_{}_N_{}_w_knet.json".format(evaluation_mode, T_test, N_test)
 
@@ -488,7 +492,7 @@ if __name__ == "__main__":
         t_danse_arr[i] = time_elapsed_danse_i
         t_knet_arr[i] = time_elapsed_knet_i
         snr_arr[i] = 10*np.log10(snr_i.numpy().item())
-    
+    '''
     test_stats = {}
     test_stats['UKF_mean_nmse'] = nmse_ukf_arr
     test_stats['EKF_mean_nmse'] = nmse_ekf_arr
@@ -611,6 +615,6 @@ if __name__ == "__main__":
     plt.tight_layout()
     tikzplotlib.save('./figs/LorenzModel/{}/InferTime_vs_SNR_Lorenz_w_knet.tex'.format(evaluation_mode))
     plt.savefig('./figs/LorenzModel/{}/InferTime_vs_SNR_Lorenz_w_knet.pdf'.format(evaluation_mode))
-    
+    '''
     #plt.show()
 

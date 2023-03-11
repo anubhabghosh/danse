@@ -197,7 +197,11 @@ def test_linear(device='cpu', model_file_saved=None, model_file_saved_knet=None,
     # Get the estimate using the baseline
     H_tensor = torch.from_numpy(linear_ssm.construct_H()).type(torch.FloatTensor)
     H_tensor = torch.repeat_interleave(H_tensor.unsqueeze(0),N_test,dim=0)
-    X_LS = torch.einsum('ijj,ikj->ikj',torch.pinverse(H_tensor),Y)#torch.einsum('ijj,ikj->ikj',H_tensor,Y)
+    #X_LS = torch.einsum('ijj,ikj->ikj',torch.pinverse(H_tensor),Y)#torch.einsum('ijj,ikj->ikj',H_tensor,Y)
+    X_LS = torch.zeros_like(Y)
+    for i in range(Y.shape[0]):
+        for j in range(Y.shape[1]):
+            X_LS[i,j,:] = (torch.pinverse(H_tensor[i]) @ Y[i,j,:].reshape((dy, 1))).reshape((dx,))
 
     # Initialize the Kalman filter model in PyTorch
     kf_model = KF(n_states=linear_ssm.n_states,
@@ -327,14 +331,14 @@ def test_linear(device='cpu', model_file_saved=None, model_file_saved_knet=None,
                         X_est_KF=torch.squeeze(X_estimated_kf[0,1:,:], 0), 
                         X_est_DANSE=torch.squeeze(X_estimated_filtered[0], 0),
                         X_est_KNET=torch.squeeze(X_estimated_filtered_knet[0], 0),
-                        savefig=True,
+                        savefig=False,
                         savefig_name="./figs/LinearModel/{}/AxesWisePlot_r2_{}dB_nu_{}dB.pdf".format(evaluation_mode, inverse_r2_dB_test, nu_dB_test))
     
     plot_state_trajectory(X=torch.squeeze(X[0,1:,:],0), 
                         X_est_KF=torch.squeeze(X_estimated_kf[0,1:,:], 0), 
                         X_est_DANSE=torch.squeeze(X_estimated_filtered[0], 0),
                         X_est_KNET=torch.squeeze(X_estimated_filtered_knet[0], 0),
-                        savefig=True,
+                        savefig=False,
                         savefig_name="./figs/LinearModel/{}/3dPlot_r2_{}dB_nu_{}dB.pdf".format(evaluation_mode, inverse_r2_dB_test, nu_dB_test))
     
     sys.stdout = orig_stdout
@@ -391,7 +395,7 @@ if __name__ == "__main__":
     N_test = 100
 
     test_data_file_dict = {
-        "-10.0dB":"./data/synthetic_data/test_trajectories_m_2_n_2_LinearSSM_data_T_{}_N_{}_r2_-10.0dB_nu_0.0dB.pkl".format(T_test, N_test),
+        "-10.0dB":"./data/synthetic_data/test_trajectories_m_2_n_2_LinearSSM_data_T_{}_N_{}_r2_-100.0dB_nu_0.0dB.pkl".format(T_test, N_test),
         "0.0dB":"./data/synthetic_data/test_trajectories_m_2_n_2_LinearSSM_data_T_{}_N_{}_r2_0.0dB_nu_0.0dB.pkl".format(T_test, N_test),
         "3.0dB":"./data/synthetic_data/test_trajectories_m_2_n_2_LinearSSM_data_T_{}_N_{}_r2_3.0dB_nu_0.0dB.pkl".format(T_test, N_test),
         "10.0dB":"./data/synthetic_data/test_trajectories_m_2_n_2_LinearSSM_data_T_{}_N_{}_r2_10.0dB_nu_0.0dB.pkl".format(T_test, N_test),
@@ -470,7 +474,7 @@ if __name__ == "__main__":
     test_stats['DANSE_time'] = t_danse_arr
     test_stats['KNET_time'] = t_knet_arr
     test_stats['SNR'] = snr_arr
-    
+    '''
     with open(test_jsonfile, 'w') as f:
         f.write(json.dumps(test_stats, cls=NDArrayEncoder, indent=2))
 
@@ -546,5 +550,5 @@ if __name__ == "__main__":
     plt.grid(True)
     plt.legend()
     plt.savefig('./figs/LinearModel/{}/InferTime_vs_SNR_Linear_2x2.pdf'.format(evaluation_mode))
-    
+    '''
     #plt.show()

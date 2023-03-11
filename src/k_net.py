@@ -245,10 +245,12 @@ class KalmanNetNN(nn.Module):
         N_T, Ty, dy = test_input.shape
 
         self.SetBatch(N_T)
-        self.InitSequence(self.ssModel.m1x_0)
+        self.InitSequence(torch.zeros(self.ssModel.n_states, 1))
 
         x_out_test = torch.empty(N_T, self.n_states, Ty, device=self.device)
         y_out_test = torch.empty(N_T, self.n_obs, Ty, device=self.device)
+
+        test_input = torch.transpose(test_input, 1, 2).type(torch.FloatTensor)
 
         for t in range(0, Ty):
             x_out_test[:,:, t] = self.forward(test_input[:,:, t]).T

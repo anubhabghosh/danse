@@ -120,7 +120,7 @@ def plot_state_trajectory_axes(X, X_est_KF=None, X_est_EKF=None, X_est_UKF=None,
         if not X_est_UKF is None:
             plt.plot(X_est_UKF[:T_end,0], '-x',ms=4,color="orange",label='$\\hat{\mathbf{x}}_{UKF} (x-component) $')
         plt.ylabel('$X_1$')
-        plt.xlabel('$n$')
+        plt.xlabel('$t$')
         plt.legend()
 
         plt.subplot(312)
@@ -136,7 +136,7 @@ def plot_state_trajectory_axes(X, X_est_KF=None, X_est_EKF=None, X_est_UKF=None,
         if not X_est_UKF is None:
             plt.plot(X_est_UKF[:T_end,1], 'x-',ms=4,color="orange",label='$\\hat{\mathbf{x}}_{UKF} (y-component) $')
         plt.ylabel('$X_2$')
-        plt.xlabel('$n$')
+        plt.xlabel('$t$')
         plt.legend()
         
     elif X.shape[-1] > 2:
@@ -145,6 +145,7 @@ def plot_state_trajectory_axes(X, X_est_KF=None, X_est_EKF=None, X_est_UKF=None,
         idim=2
         lw=1.3
         plt.rcParams['font.size'] = 16
+        #plt.rcParams['font.family']='serif'
         fig, ax = plt.subplots(figsize=(9,5))
         #plt.subplot(311)
         if not X_est_UKF is None:
@@ -159,8 +160,8 @@ def plot_state_trajectory_axes(X, X_est_KF=None, X_est_EKF=None, X_est_UKF=None,
             ax.plot(X_est_EKF[T_start:T_end,idim], 'b.-',label='$\\hat{\mathbf{x}}_{EKF}$',lw=lw)
         ax.plot(X[T_start:T_end,idim],'k-',label='$\\mathbf{x}^{true}$',lw=lw)
 
-        ax.set_ylabel('$X_{}$'.format(idim+1))
-        ax.set_xlabel('$n$')
+        ax.set_ylabel('$x_{}$'.format(idim+1))
+        ax.set_xlabel('$t$')
         #plt.legend()
         handles, labels = ax.get_legend_handles_labels()
         order=None
@@ -181,7 +182,7 @@ def plot_state_trajectory_axes(X, X_est_KF=None, X_est_EKF=None, X_est_UKF=None,
         if not X_est_UKF is None:
             plt.plot(X_est_UKF[:T_end,1], ':',label='$\\hat{\mathbf{x}}_{UKF} (y-component) $')
         plt.ylabel('$X_2$')
-        plt.xlabel('$n$')
+        plt.xlabel('$t$')
         plt.legend()
     
         plt.subplot(313)
@@ -195,7 +196,7 @@ def plot_state_trajectory_axes(X, X_est_KF=None, X_est_EKF=None, X_est_UKF=None,
         if not X_est_UKF is None:
             plt.plot(X_est_UKF[:T_end,2], ':',label='$\\hat{\mathbf{x}}_{UKF} (z-component) $')
         plt.ylabel('$X_3$')
-        plt.xlabel('$n$')
+        plt.xlabel('$t$')
         plt.legend()
         '''
     plt.tight_layout()
@@ -216,7 +217,7 @@ def plot_measurement_data_axes(Y, Y_est=None, savefig=False, savefig_name=None):
         if not Y_est is None:
             plt.plot(Y_est[:,0], '--',label='$\\hat{\mathbf{Y}} (x-component) $')
         plt.ylabel('$Y_1$')
-        plt.xlabel('$n$')
+        plt.xlabel('$t$')
         plt.legend()
         
         plt.subplot(312)
@@ -224,7 +225,7 @@ def plot_measurement_data_axes(Y, Y_est=None, savefig=False, savefig_name=None):
         if not Y_est is None:
             plt.plot(Y_est[:,1], '--',label='$\\hat{\mathbf{Y}} (y-component)$')
         plt.ylabel('$Y_2$')
-        plt.xlabel('$n$')
+        plt.xlabel('$t$')
         plt.legend()
 
     elif Y.shape[-1] > 2:
@@ -233,7 +234,7 @@ def plot_measurement_data_axes(Y, Y_est=None, savefig=False, savefig_name=None):
         if not Y_est is None:
             plt.plot(Y_est[:,0], '--',label='$\\hat{\mathbf{Y}} (x-component) $')
         plt.ylabel('$Y_1$')
-        plt.xlabel('$n$')
+        plt.xlabel('$t$')
         plt.legend()
         
         plt.subplot(312)
@@ -241,7 +242,7 @@ def plot_measurement_data_axes(Y, Y_est=None, savefig=False, savefig_name=None):
         if not Y_est is None:
             plt.plot(Y_est[:,1], '--',label='$\\hat{\mathbf{Y}} (y-component)$')
         plt.ylabel('$Y_2$')
-        plt.xlabel('$n$')
+        plt.xlabel('$t$')
         plt.legend()
 
         plt.subplot(313)
@@ -249,7 +250,7 @@ def plot_measurement_data_axes(Y, Y_est=None, savefig=False, savefig_name=None):
         if not Y_est is None:
             plt.plot(Y_est[:,2],'--',label='$\\hat{\mathbf{Y}} (z-component)$')
         plt.ylabel('$Y_3$')
-        plt.xlabel('$n$')
+        plt.xlabel('$t$')
         plt.legend()
     
     plt.tight_layout()
