@@ -1,6 +1,6 @@
 # DANSE: Data-driven Nonlinear State Estimation of Model-free Process in Unsupervised Bayesian Setup
 
-### Under review at EUSIPCO'23
+### Accepted at EUSIPCO'23
 This is the repository for implementing a nonlinear state estimation of a model-free process with Linear measurements 
 
 ## Authors
