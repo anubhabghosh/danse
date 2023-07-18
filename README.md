@@ -4,7 +4,7 @@
 This is the repository for implementing a nonlinear state estimation of a model-free process with Linear measurements 
 
 ## Authors
-Anubhab Ghosh (anubhabg@kth.se), Antoine Honoré (honore@kth.se)
+Anubhab Ghosh (anubhabg@kth.se), Antoine Honoré (honore@kth.se), Saikat Chatterjee (sach@kth.se)
 
 ## Dependencies
 - PyTorch (1.6.0)
