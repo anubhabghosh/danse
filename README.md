@@ -1,10 +1,12 @@
 # DANSE: Data-driven Nonlinear State Estimation of Model-free Process in Unsupervised Bayesian Setup
 
 ### Accepted at EUSIPCO'23
-This is the repository for implementing a nonlinear state estimation of a model-free process with Linear measurements 
+This is the repository for implementing a nonlinear state estimation of a model-free process with Linear measurements
+
+[Postprint](https://ieeexplore.ieee.org/document/10289946)
 
 ## Authors
-Anubhab Ghosh (anubhabg@kth.se), Antoine Honoré (honore@kth.se), Saikat Chatterjee (sach@kth.se)
+**Anubhab Ghosh** (anubhabg@kth.se), Antoine Honoré (honore@kth.se), Saikat Chatterjee (sach@kth.se)
 
 ## Dependencies
 - PyTorch (1.6.0)
